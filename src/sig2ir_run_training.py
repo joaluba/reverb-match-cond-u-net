@@ -13,7 +13,7 @@ import helpers
 from datetime import datetime
 import time
 # my modules: 
-import sig2ir_datasetprep 
+import sig2ir_datasetprep as sig2ir_datasetprep 
 import sig2ir_loss 
 import rev2rev_custom_model 
 import sig2ir_traintest 

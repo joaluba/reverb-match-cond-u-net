@@ -6,7 +6,7 @@ from tqdm import tqdm
 import numpy as np
 from torch.utils.data import DataLoader, random_split
 from torch.utils.data.sampler import SubsetRandomSampler
-import sig2ir_datasetprep
+import sig2ir_datasetprep as sig2ir_datasetprep
 import sig2ir_loss
 import rev2rev_custom_model
 import argparse

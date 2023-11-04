@@ -74,18 +74,7 @@ class Dataset_AcousticSpaceTransfer(Dataset):
             "edt": self.ds_df["edt"][int(index)],
         }
         return sig_rand_excerpt, ir, data_point, label
-    
-    def create_rand_combinations(self):
-        # initialize data frame with a full data set
-        df_ir_expanded=pd.concat([self.df_irs] * self.N_per_ir, ignore_index=True)
-        df_audio_samples=self.df_audiopool.sample(n = len(df_ir_expanded),replace=True)
-        df_ir_expanded.reset_index(drop=True, inplace=True)
-        df_audio_samples.reset_index(drop=True, inplace=True)
-        df_ds = pd.concat([df_ir_expanded, df_audio_samples], axis=1)
-        df_ds = df_ds.sort_values(by='filepath_ir').reset_index(drop=True)
-        return df_ds
-        
-    
+       
     def save_dataset_info(self,dir,nametag):
         # create dictionary with parameters for training data
         train_params={"N_ir": len(self.df_irs),
