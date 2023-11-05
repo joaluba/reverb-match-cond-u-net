@@ -18,9 +18,10 @@ class DatasetReverbTransfer(Dataset):
         # Create a custom index with consecutive pairs
         # (a datapoint will constist of a mixture of two signals)
         custom_index = np.repeat(np.arange(len(self.df_ds)//2), 2)
+        self.df_ds = self.df_ds.copy() # to prevent "SettingWithCopy" warning
         self.df_ds.loc[:, "pair_idx"] = custom_index
         self.sig_len=sig_len # length of input waveform 
-        self.sr=sr # sampling rate
+        self.sr=int(sr) # sampling rate
         self.split = split # train/test/val
         self.device=device
         self.content_ir=content_ir
@@ -42,10 +43,15 @@ class DatasetReverbTransfer(Dataset):
 
         # Crop signals  
         # Note: function expects shapes (batch_size, in_channels, input_length) and gives back the same
-        sContent=hlp.conv_based_crop_torch(sContent.unsqueeze(0),self.sr,self.sig_len,int(self.sig_len/4),self.device).squeeze(0)
-        sStyle=hlp.conv_based_crop_torch(sStyle.unsqueeze(0),self.sr,self.sig_len,int(self.sig_len/4),self.device).squeeze(0)
-        nContent=hlp.conv_based_crop_torch(nContent.unsqueeze(0),self.sr,self.sig_len,int(self.sig_len/4),self.device).squeeze(0)
-        nStyle=hlp.conv_based_crop_torch(nStyle.unsqueeze(0),self.sr,self.sig_len,int(self.sig_len/4),self.device).squeeze(0)
+        # sContent=hlp.conv_based_crop_torch(sContent.unsqueeze(0),self.sr,self.sig_len,int(self.sig_len/4),self.device).squeeze(0)
+        # sStyle=hlp.conv_based_crop_torch(sStyle.unsqueeze(0),self.sr,self.sig_len,int(self.sig_len/4),self.device).squeeze(0)
+        # nContent=hlp.conv_based_crop_torch(nContent.unsqueeze(0),self.sr,self.sig_len,int(self.sig_len/4),self.device).squeeze(0)
+        # nStyle=hlp.conv_based_crop_torch(nStyle.unsqueeze(0),self.sr,self.sig_len,int(self.sig_len/4),self.device).squeeze(0)
+
+        sContent=hlp.get_nonsilent_frame(sContent.unsqueeze(0),self.sig_len).squeeze(0)
+        sStyle=hlp.get_nonsilent_frame(sStyle.unsqueeze(0),self.sig_len).squeeze(0)
+        nContent=hlp.get_nonsilent_frame(nContent.unsqueeze(0),self.sig_len).squeeze(0)
+        nStyle=hlp.get_nonsilent_frame(nStyle.unsqueeze(0),self.sig_len).squeeze(0)
 
         # Load impulse responses
         # Note: If self.content_ir is not empty, it means that we want all content audios to have the same target ir,
@@ -55,7 +61,7 @@ class DatasetReverbTransfer(Dataset):
         if self.content_ir is None:
             irContent = hlp.torch_load_mono(df_pair["ir_file_path"][0],self.sr).to(self.device)
         elif self.content_ir=="anechoic":
-            irContent= np.concatenate(([1], np.zeros(self.sr*1))).to(self.device)
+            irContent = torch.cat((torch.tensor([[1.0]],device=self.device), torch.zeros((1,self.sr-1), device=self.device)),1)
         else: 
             irContent = hlp.torch_load_mono(self.content_ir,self.sr).to(self.device)
             
@@ -65,14 +71,9 @@ class DatasetReverbTransfer(Dataset):
             irStyle = hlp.torch_load_mono(self.style_ir,self.sr).to(self.device)
 
         # Convolve signals with impulse responses
-
         sContent_rev=torchaudio.functional.convolve(sContent, irContent,mode="same")
         sStyle_rev=torchaudio.functional.convolve(sStyle, irStyle,mode="same")
         sTarget_rev=torchaudio.functional.convolve(sContent, irStyle,mode="same")
-
-        # sContent_rev=torch.tensor(signal.fftconvolve(sContent.cpu().numpy(), irContent.cpu().numpy(),mode="same")).to(self.device)
-        # sStyle_rev=torch.tensor(signal.fftconvolve(sStyle.cpu().numpy(), irStyle.cpu().numpy(),mode="same")).to(self.device)
-        # sTarget_rev=torch.tensor(signal.fftconvolve(sContent.cpu().numpy(), irStyle.cpu().numpy(),mode="same")).to(self.device)
 
         # Add noise to signals
         snr1=df_pair["snr"][0]
@@ -109,6 +110,6 @@ if __name__ == "__main__":
     elapsed_time = end_time - start_time
     print(f"{elapsed_time=}")
 
-    # create a tag for dataset info file
-    print("Number of data points:" + str(len(dataset)))
-    print("Dimensions of input data:" + str(dataset[20][0].shape))
+    # # create a tag for dataset info file
+    # print("Number of data points:" + str(len(dataset)))
+    # print("Dimensions of input data:" + str(dataset[20][0].shape))

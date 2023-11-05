@@ -83,6 +83,17 @@ def torch_resample_if_needed(audio,sr,sr_target):
     return audio
 
 
+def get_nonsilent_frame(audio,L_win_samples):
+    E_mean=10*torch.log10(torch.sum(audio**2))
+    E_thresh=E_mean-15
+    E_frame=-100
+    while E_frame<E_thresh:
+        idx_start= torch.randint(0, audio.shape[2]-L_win_samples, (1,))
+        chosen_frame=audio[:,:,idx_start:idx_start+L_win_samples]
+        E_frame=10*torch.log10(torch.sum(chosen_frame**2))
+    return chosen_frame
+
+
 def conv_based_crop_torch(audio_orig,fs,L_win_smpl,stride_smpl,device):
     # This function computes energy of a signal using a strided convolution in pytorch 
     # and picks the window with the highest energy out of the original audio
@@ -94,7 +105,6 @@ def conv_based_crop_torch(audio_orig,fs,L_win_smpl,stride_smpl,device):
         audio=torch.mean(audio_orig,dim=1,keepdim=True)
     else: 
         audio=audio_orig
-    
     
     if audio.shape[2]<L_win_smpl:
         # if signal shorter than desired datapoint length - pad and take directly
@@ -133,10 +143,14 @@ def torch_set_level(sig_in,L_des):
     return sig_out
 
 def torch_mix_and_set_snr(s,n,snr):
-    # set snr between signal and noise
-    s=torch_set_level(s,-30)
-    n=torch_set_level(n,-30+snr)
-    return s+n
+    if snr<100:
+        # set snr between signal and noise
+        n=torch_set_level(n,-30)
+        s=torch_set_level(s,-30+snr)
+        out=s+n
+    else:
+        out=s
+    return out
 
 
 def torch_load_mono(filename,sr_target): 
