@@ -195,11 +195,14 @@ class waveunet(nn.Module):
         # Up Sampling
         for i in range(self.n_layers):
             # encoder layer
+            print("encoder block intput " + str(o.shape))
             o = self.encoder[i](o,z)
+            print("encoder block output " + str(o.shape))
             # store skip features for later
             skipfeats.append(o)
             # decimate, [batch_size, T // 2, channels]
             o = o[:, :, ::2]
+            print("after decimating " + str(o.shape))
 
         # middle layer:
         o = self.middle(o)
@@ -208,10 +211,12 @@ class waveunet(nn.Module):
         for i in range(self.n_layers):
             # interpolate, [batch_size, T * 2, channels]:
             o = F.interpolate(o, scale_factor=2, mode="linear", align_corners=True)
+            print("after interpolating " + str(o.shape))
             # concatenate with skip features
             o = torch.cat([o, skipfeats[self.n_layers - i - 1]], dim=1)
             # decoder layer 
             o = self.decoder[i](o,z)
+            print("after decoding " + str(o.shape))
 
         # concatenate output with input
         o = torch.cat([o, x], dim=1)
@@ -226,17 +231,17 @@ if __name__ == "__main__":
     
     # example input tensor
     FS=48000
-    sig_len=16384 #int(2*FS)
+    sig_len=98304 #int(2*FS)
     l_len=512
     v_len=400 
     z_len=512*2
     ir_len=FS
     
-    x_wave=torch.randn(1,1,sig_len)
+    x_wave=torch.randn(1,1,sig_len).to("cuda")
 
     # check reverb encoder
     model=ReverbEncoder(x_len=sig_len, z_len=512, N_layers=3)
-    model.to("cpu")
+    model.to("cuda")
     model.eval
     reverb_emb=model(x_wave)
     summary(model,(1, sig_len))# torch summary expects 2 dim input for 1d conv
@@ -244,8 +249,8 @@ if __name__ == "__main__":
     print(f"reverb encoder network output shape: {reverb_emb.shape}")
 
     # check waveunet 
-    model=waveunet(n_layers=12,channels_interval=24,z_channels=512)
-    model.to("cpu")
+    model=waveunet(n_layers=13,channels_interval=24,z_channels=512)
+    model.to("cuda")
     model.eval
     y_wave=model(x_wave,reverb_emb)
     summary(model,[(1, sig_len),(1, 512)])# torch summary expects 2 dim input for 1d conv
