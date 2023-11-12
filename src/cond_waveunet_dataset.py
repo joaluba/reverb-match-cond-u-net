@@ -36,16 +36,16 @@ class DatasetReverbTransfer(Dataset):
         df_pair=df_pair.reset_index()
 
         # Load signals (and resample if needed)
-        sContent = hlp.torch_load_mono(df_pair["speech_file_path"][0],self.sr).to(self.device)
-        sStyle = hlp.torch_load_mono(df_pair["speech_file_path"][1],self.sr).to(self.device)
-        nContent = hlp.torch_load_mono(df_pair["noise_file_path"][0],self.sr).to(self.device)
-        nStyle = hlp.torch_load_mono(df_pair["noise_file_path"][1],self.sr).to(self.device)
+        sContent = hlp.torch_load_mono(df_pair["speech_file_path"][0],self.sr)
+        sStyle = hlp.torch_load_mono(df_pair["speech_file_path"][1],self.sr)
+        nContent = hlp.torch_load_mono(df_pair["noise_file_path"][0],self.sr)
+        nStyle = hlp.torch_load_mono(df_pair["noise_file_path"][1],self.sr)
 
         # Crop signals  
-        sContent=hlp.get_nonsilent_frame(sContent,self.sig_len,self.device)
-        sStyle=hlp.get_nonsilent_frame(sStyle,self.sig_len,self.device)
-        nContent=hlp.get_nonsilent_frame(nContent,self.sig_len,self.device)
-        nStyle=hlp.get_nonsilent_frame(nStyle,self.sig_len,self.device)
+        sContent=hlp.get_nonsilent_frame(sContent,self.sig_len)
+        sStyle=hlp.get_nonsilent_frame(sStyle,self.sig_len)
+        nContent=hlp.get_nonsilent_frame(nContent,self.sig_len)
+        nStyle=hlp.get_nonsilent_frame(nStyle,self.sig_len)
 
         # Load impulse responses
         # Note: If self.content_ir is not empty, it means that we want all content audios to have the same target ir,
@@ -53,31 +53,31 @@ class DatasetReverbTransfer(Dataset):
         # can have a different ir. This reflects if we want to learn one-to-one, many-to-one, one-to-many, or many-to-many. 
 
         if self.content_ir is None:
-            irContent = hlp.torch_load_mono(df_pair["ir_file_path"][0],self.sr).to(self.device)
+            irContent = hlp.torch_load_mono(df_pair["ir_file_path"][0],self.sr)
         elif self.content_ir=="anechoic":
-            irContent = torch.cat((torch.tensor([[1.0]],device=self.device), torch.zeros((1,self.sr-1), device=self.device)),1)
+            irContent = torch.cat((torch.tensor([[1.0]]), torch.zeros((1,self.sr-1))),1)
         else: 
-            irContent = hlp.torch_load_mono(self.content_ir,self.sr).to(self.device)
+            irContent = hlp.torch_load_mono(self.content_ir,self.sr)
             
         if self.style_ir is None:
-            irStyle = hlp.torch_load_mono(df_pair["ir_file_path"][1],self.sr).to(self.device)
+            irStyle = hlp.torch_load_mono(df_pair["ir_file_path"][1],self.sr)
         else: 
-            irStyle = hlp.torch_load_mono(self.style_ir,self.sr).to(self.device)
+            irStyle = hlp.torch_load_mono(self.style_ir,self.sr)
 
         # Convolve signals with impulse responses
-        sContent_rev=torchaudio.functional.convolve(sContent, irContent,mode="same")
-        sStyle_rev=torchaudio.functional.convolve(sStyle, irStyle,mode="same")
-        sTarget_rev=torchaudio.functional.convolve(sContent, irStyle,mode="same")
+        sContent_rev = torch.from_numpy(scipy.signal.fftconvolve(sContent, irContent,mode="same"))
+        sStyle_rev = torch.from_numpy(scipy.signal.fftconvolve(sStyle, irStyle,mode="same"))
+        sTarget_rev = torch.from_numpy(scipy.signal.fftconvolve(sContent, irStyle,mode="same"))
+
+        # sContent_rev=torchaudio.functional.convolve(sContent, irContent,mode="same")
+        # sStyle_rev=torchaudio.functional.convolve(sStyle, irStyle,mode="same")
+        # sTarget_rev=torchaudio.functional.convolve(sContent, irStyle,mode="same")
 
         # Add noise to signals
         snr1=df_pair["snr"][0]
         snr2=df_pair["snr"][1]
         sContent_noisyrev=hlp.torch_mix_and_set_snr(sContent_rev,nContent,snr1)
         sStylen_noisyrev=hlp.torch_mix_and_set_snr(sStyle_rev,nStyle,snr2)
-
-        # Remove unnecessary from memory
-        del sContent, sStyle, nContent, nStyle, irContent, irStyle
-        torch.cuda.empty_cache() 
 
         # scale data but preserve symmetry
         sContent_in=hlp.torch_standardize_max_abs(sContent_noisyrev)
@@ -91,7 +91,7 @@ if __name__ == "__main__":
 
     # # ---- check if the dataset definition is correct: ----
     STYLE_RIR_FILE ="/home/ubuntu/Data/ACE-Single/Lecture_Room_1/1/Single_508_1_RIR.wav"
-    DF_METADATA="/home/ubuntu/joanna/reverb-match-cond-u-net/notebooks/data_set_check.csv" 
+    DF_METADATA="/home/ubuntu/joanna/reverb-match-cond-u-net/notebooks/check_data_set.csv" 
     SAMPLING_RATE=int(48e3)
     SIG_LEN_SEC=2 # TODO: instead of only cropping -> cut or zero-pad 
 
