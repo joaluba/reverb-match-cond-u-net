@@ -83,14 +83,20 @@ def torch_resample_if_needed(audio,sr,sr_target):
     return audio
 
 
-def get_nonsilent_frame(audio,L_win_samples):
-    E_mean=10*torch.log10(torch.sum(audio**2))
-    E_thresh=E_mean-15
-    E_frame=-100
-    while E_frame<E_thresh:
-        idx_start= torch.randint(0, audio.shape[2]-L_win_samples, (1,))
-        chosen_frame=audio[:,:,idx_start:idx_start+L_win_samples]
-        E_frame=10*torch.log10(torch.sum(chosen_frame**2))
+def get_nonsilent_frame(audio,L_win_samples,device):
+    if audio.shape[1]<L_win_samples:
+        # if signal shorter than desired datapoint length - pad and take directly
+        sig_out = torch.zeros(1, int(L_win_samples),device=device)
+        sig_out[:,:audio.shape[1]] = audio
+        chosen_frame=sig_out
+    else:
+        E_mean=10*torch.log10(torch.sum(audio**2))
+        E_thresh=E_mean-15
+        E_frame=-100
+        while E_frame<E_thresh:
+            idx_start= torch.randint(0, audio.shape[1]-L_win_samples, (1,))
+            chosen_frame=audio[:,idx_start:idx_start+L_win_samples]
+            E_frame=10*torch.log10(torch.sum(chosen_frame**2))
     return chosen_frame
 
 
