@@ -57,21 +57,20 @@ class ReverbEncoderBlock(nn.Module):
 
 class ReverbEncoder(nn.Module):
     # -------- Encoder: --------
-    def __init__(self, x_len=16000*3, z_len=512, N_layers=3):
+    def __init__(self, x_len=16000*3, z_len=512, N_layers=9):
         super().__init__() 
+
+        # internal parameters of the network:
+        kernel_size=15
+        stride=2
+        padding= (kernel_size - 1) // 2
 
         # convolutional layers are a series of encoder blocks with increasing channels
         conv_layers = []
-        in_channels=1
-        out_channels=512
+        block_channels=1
         for i in range(N_layers):
-            # internal parameters of the network:
-            kernel_size=int(x_len/2)+1
-            stride=16
-            padding= int((kernel_size - 1) // 2)
-            conv_layers.append(ReverbEncoderBlock(in_channels, out_channels, kernel_size=kernel_size, stride=stride,padding=padding))
-            in_channels=out_channels
-            out_channels*=2
+            conv_layers.append(ReverbEncoderBlock(block_channels, block_channels*2, kernel_size=15, stride=stride,padding=padding))
+            block_channels*=2
             # compute heigth of the ouput (width=1,depth=block_channels)
             x_len=np.floor((x_len-kernel_size+2*padding)/stride)+1 
 
@@ -82,9 +81,9 @@ class ReverbEncoder(nn.Module):
         #self.aggregate = nn.Conv1d(block_channels, z_len, kernel_size=int(x_len), stride=1, padding=0)
     
         # final mlp layers
-        self.mlp = nn.Sequential(nn.Linear(in_channels, in_channels),
-                                 nn.Linear(in_channels,int(in_channels/2)),
-                                 nn.Linear(int(in_channels/2),z_len))
+        self.mlp = nn.Sequential(nn.Linear(block_channels, block_channels),
+                                 nn.Linear(block_channels,int(block_channels/2)),
+                                 nn.Linear(int(block_channels/2),z_len))
         
     def forward(self, x):
         # Convolutional residual blocks:
@@ -195,14 +194,11 @@ class waveunet(nn.Module):
         # Up Sampling
         for i in range(self.n_layers):
             # encoder layer
-            print("encoder block intput " + str(o.shape))
             o = self.encoder[i](o,z)
-            print("encoder block output " + str(o.shape))
             # store skip features for later
             skipfeats.append(o)
             # decimate, [batch_size, T // 2, channels]
             o = o[:, :, ::2]
-            print("after decimating " + str(o.shape))
 
         # middle layer:
         o = self.middle(o)
@@ -211,12 +207,10 @@ class waveunet(nn.Module):
         for i in range(self.n_layers):
             # interpolate, [batch_size, T * 2, channels]:
             o = F.interpolate(o, scale_factor=2, mode="linear", align_corners=True)
-            print("after interpolating " + str(o.shape))
             # concatenate with skip features
             o = torch.cat([o, skipfeats[self.n_layers - i - 1]], dim=1)
             # decoder layer 
             o = self.decoder[i](o,z)
-            print("after decoding " + str(o.shape))
 
         # concatenate output with input
         o = torch.cat([o, x], dim=1)
@@ -231,20 +225,20 @@ if __name__ == "__main__":
     
     # example input tensor
     FS=48000
-    sig_len=98304 #int(2*FS)
+    SIG_LEN_SMPL=98304 #int(2*FS)
     l_len=512
     v_len=400 
     z_len=512*2
     ir_len=FS
     
-    x_wave=torch.randn(1,1,sig_len).to("cuda")
+    x_wave=torch.randn(1,1,SIG_LEN_SMPL).to("cuda")
 
     # check reverb encoder
-    model=ReverbEncoder(x_len=sig_len, z_len=512, N_layers=3)
+    model=ReverbEncoder(x_len=SIG_LEN_SMPL, z_len=512, N_layers=6)
     model.to("cuda")
     model.eval
     reverb_emb=model(x_wave)
-    summary(model,(1, sig_len))# torch summary expects 2 dim input for 1d conv
+    summary(model,(1, SIG_LEN_SMPL))# torch summary expects 2 dim input for 1d conv
     print(f"reverb encoder network input shape: {x_wave.shape}")
     print(f"reverb encoder network output shape: {reverb_emb.shape}")
 
@@ -253,7 +247,7 @@ if __name__ == "__main__":
     model.to("cuda")
     model.eval
     y_wave=model(x_wave,reverb_emb)
-    summary(model,[(1, sig_len),(1, 512)])# torch summary expects 2 dim input for 1d conv
+    summary(model,[(1, SIG_LEN_SMPL),(1, 512)])# torch summary expects 2 dim input for 1d conv
     print(f"waveunet input shape: {x_wave.shape}")
     print(f" output shape: {y_wave.shape}")
 
