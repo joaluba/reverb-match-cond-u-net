@@ -42,16 +42,10 @@ class DatasetReverbTransfer(Dataset):
         nStyle = hlp.torch_load_mono(df_pair["noise_file_path"][1],self.sr).to(self.device)
 
         # Crop signals  
-        # Note: function expects shapes (batch_size, in_channels, input_length) and gives back the same
-        # sContent=hlp.conv_based_crop_torch(sContent.unsqueeze(0),self.sr,self.sig_len,int(self.sig_len/4),self.device).squeeze(0)
-        # sStyle=hlp.conv_based_crop_torch(sStyle.unsqueeze(0),self.sr,self.sig_len,int(self.sig_len/4),self.device).squeeze(0)
-        # nContent=hlp.conv_based_crop_torch(nContent.unsqueeze(0),self.sr,self.sig_len,int(self.sig_len/4),self.device).squeeze(0)
-        # nStyle=hlp.conv_based_crop_torch(nStyle.unsqueeze(0),self.sr,self.sig_len,int(self.sig_len/4),self.device).squeeze(0)
-
-        sContent=hlp.get_nonsilent_frame(sContent.unsqueeze(0),self.sig_len).squeeze(0)
-        sStyle=hlp.get_nonsilent_frame(sStyle.unsqueeze(0),self.sig_len).squeeze(0)
-        nContent=hlp.get_nonsilent_frame(nContent.unsqueeze(0),self.sig_len).squeeze(0)
-        nStyle=hlp.get_nonsilent_frame(nStyle.unsqueeze(0),self.sig_len).squeeze(0)
+        sContent=hlp.get_nonsilent_frame(sContent,self.sig_len,self.device)
+        sStyle=hlp.get_nonsilent_frame(sStyle,self.sig_len,self.device)
+        nContent=hlp.get_nonsilent_frame(nContent,self.sig_len,self.device)
+        nStyle=hlp.get_nonsilent_frame(nStyle,self.sig_len,self.device)
 
         # Load impulse responses
         # Note: If self.content_ir is not empty, it means that we want all content audios to have the same target ir,
@@ -81,19 +75,23 @@ class DatasetReverbTransfer(Dataset):
         sContent_noisyrev=hlp.torch_mix_and_set_snr(sContent_rev,nContent,snr1)
         sStylen_noisyrev=hlp.torch_mix_and_set_snr(sStyle_rev,nStyle,snr2)
 
+        # Remove unnecessary from memory
+        del sContent, sStyle, nContent, nStyle, irContent, irStyle
+        torch.cuda.empty_cache() 
+
         # scale data but preserve symmetry
         sContent_in=hlp.torch_standardize_max_abs(sContent_noisyrev)
         sStyle_in=hlp.torch_standardize_max_abs(sStylen_noisyrev)
         sTarget_out=hlp.torch_standardize_max_abs(sTarget_rev)
 
         # return in the format (batch_size, in_channels, input_length)
-        return sContent_in.unsqueeze(0), sStyle_in.unsqueeze(0), sTarget_out.unsqueeze(0)
+        return sContent_in, sStyle_in, sTarget_out
 
 if __name__ == "__main__":
 
     # # ---- check if the dataset definition is correct: ----
     STYLE_RIR_FILE ="/home/ubuntu/Data/ACE-Single/Lecture_Room_1/1/Single_508_1_RIR.wav"
-    DF_METADATA="/home/ubuntu/joanna/reverb-match-cond-u-net/notebooks/data_set.csv" 
+    DF_METADATA="/home/ubuntu/joanna/reverb-match-cond-u-net/notebooks/data_set_check.csv" 
     SAMPLING_RATE=int(48e3)
     SIG_LEN_SEC=2 # TODO: instead of only cropping -> cut or zero-pad 
 
@@ -105,11 +103,11 @@ if __name__ == "__main__":
 
     import time
     start_time = time.time()
-    sContent_in, sStyle_in, sTarget_out = dataset[0]
+    sContent_in, sStyle_in, sTarget_out = dataset[39]
     end_time = time.time()
     elapsed_time = end_time - start_time
     print(f"{elapsed_time=}")
 
-    # # create a tag for dataset info file
-    # print("Number of data points:" + str(len(dataset)))
-    # print("Dimensions of input data:" + str(dataset[20][0].shape))
+    # create a tag for dataset info file
+    print("Number of data points:" + str(len(dataset)))
+    print("Dimensions of input data:" + str(dataset[20][0].shape))

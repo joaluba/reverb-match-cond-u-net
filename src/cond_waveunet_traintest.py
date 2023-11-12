@@ -6,33 +6,56 @@ from tqdm import tqdm
 import numpy as np
 from torch.utils.data import DataLoader, random_split
 from torch.utils.data.sampler import SubsetRandomSampler
-import sig2ir_datasetprep as sig2ir_datasetprep
-import sig2ir_loss
-import rev2rev_custom_model
+import cond_waveunet_dataset
+import cond_waveunet_loss
+import cond_waveunet_model
 import argparse
 import pandas as pd
 import getpass
-import helpers
+import joa_helpers
 from datetime import datetime
 import time
 
-def train_and_test(model, trainloader, valloader, testloader, trainparams, store_outputs):
+
+def infer_and_compute_loss(model_reverbenc, model_waveunet, emb_criterion, audio_criterion, data):
+    # Function to infer target and compute loss - same for training, testing and validation
+    # -------------------------------------------------------------------------------------
+    # get datapoint
+    sContent_in = data[0]
+    sStyle_in=data[1]
+    sTarget_gt=data[2]
+    # forward pass - get prediction of the ir
+    embedding_gt=model_reverbenc(sStyle_in)
+    sTarget_prediction=model_waveunet(sContent_in,embedding_gt)
+    # loss
+    embedding_prediction=model_reverbenc(sTarget_prediction)
+    L_sc, L_mag = audio_criterion(sTarget_gt.squeeze(1), sTarget_prediction.squeeze(1))
+    L_emb=-torch.mean(emb_criterion(embedding_gt,embedding_prediction))
+    # loss 
+    loss=L_sc + L_mag +  L_emb
+    return loss
+
+
+def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, testloader, trainparams, store_outputs):
     
     # create training tag based on date
     tag = datetime.now().strftime("%d-%m-%Y--%H-%M")
     # training parameters
-    criterion = trainparams["criterion"]
+    device = trainparams["device"]
+    audio_criterion = trainparams["audio_criterion"]
+    emb_criterion = trainparams["emb_criterion"]
     optimizer = trainparams["optimizer"]
     num_epochs = trainparams["num_epochs"]
-    device = trainparams["device"]
     datasavepath = trainparams["datasavepath"]
 
-    criterion=criterion.to(device)
-    model=model.to(device)
+    # move components to device
+    audio_criterion=audio_criterion.to(device)
+    emb_criterion=emb_criterion.to(device)
+    model_reverbenc=model_reverbenc.to(device)
+    model_waveunet=model_waveunet.to(device)
 
     # allocate variable to track loss evolution 
     loss_evol=[]
-
     
     # ------------- TRAINING START: -------------
     start = time.time()
@@ -40,17 +63,12 @@ def train_and_test(model, trainloader, valloader, testloader, trainparams, store
 
 
         # ----- Training loop for this epoch: -----
-        model.train()
+        model_waveunet.train()
+        model_reverbenc.train()
         train_loss=0
         for j,data in tqdm(enumerate(trainloader),total = len(trainloader)):
-            # get datapoint
-            x_orig = data[0].to(device)
-            ir_target=data[1].to(device)
-            # forward pass - get prediction of the ir
-            ir_predict = model(x_orig)
-            # loss 
-            sc_loss, mag_loss = criterion(ir_predict.squeeze(1), ir_target[:,:,:ir_predict.shape[2]].squeeze(1))
-            loss= sc_loss+mag_loss
+            # infer and compute loss
+            loss=infer_and_compute_loss(model_reverbenc, model_waveunet, emb_criterion, audio_criterion, data)
             # empty gradient
             optimizer.zero_grad()
             # compute gradients 
@@ -60,23 +78,16 @@ def train_and_test(model, trainloader, valloader, testloader, trainparams, store
             # compute loss for the current batch
             train_loss += loss.item()
 
-
         # ----- Validation loop for this epoch: -----
-        model.eval() 
+        model_waveunet.eval() 
+        model_reverbenc.eval()
         with torch.no_grad():
             val_loss=0
             for j,data in tqdm(enumerate(valloader),total = len(valloader)):
-                # get datapoint
-                x_orig = data[0].to(device)
-                ir_target=data[1].to(device)
-                # forward pass - get prediction of the ir
-                ir_predict = model(x_orig)
-                # loss 
-                sc_loss, mag_loss = criterion(ir_predict.squeeze(1), ir_target[:,:,:ir_predict.shape[2]].squeeze(1))
-                loss= sc_loss+mag_loss
+                 # infer and compute loss
+                loss=infer_and_compute_loss(model_reverbenc, model_waveunet, emb_criterion, audio_criterion, data)
                 # compute loss for the current batch
                 val_loss += loss.item()
-        
         
         # Print stats at the end of the epoch
         num_samples_train=len(trainloader.sampler)
@@ -96,21 +107,15 @@ def train_and_test(model, trainloader, valloader, testloader, trainparams, store
                         }, datasavepath+tag+'.pt')
             
     end=time.time()
-    print(f"Finished training after: {(end-start)} seconds" )
+    print(f"Finished training after: {(end-start)} seconds")
 
     # ------------- TESTING START: -------------
     model.eval() 
     with torch.no_grad():
         test_loss=0
         for j,data in tqdm(enumerate(testloader),total = len(testloader)):
-            # get datapoint
-            x_orig = data[0].to(device)
-            ir_target=data[1].to(device)
-            # forward pass - get prediction of the ir
-            ir_predict = model(x_orig)
-            # loss 
-            sc_loss, mag_loss = criterion(ir_predict.squeeze(1), ir_target[:,:,:ir_predict.shape[2]].squeeze(1))
-            loss= sc_loss+mag_loss
+            # infer and compute loss
+            loss=infer_and_compute_loss(model_reverbenc, model_waveunet, emb_criterion, audio_criterion, data)
             # compute loss for the current batch
             test_loss += loss.item()
 
@@ -119,7 +124,8 @@ def train_and_test(model, trainloader, valloader, testloader, trainparams, store
     avg_test_loss = test_loss / num_samples_test
     print(f'Test. Loss: {avg_test_loss:.5f}')
 
-        
+
+
 if __name__ == "__main__":
     # ---- check if training loop is correct ----
 
@@ -127,18 +133,24 @@ if __name__ == "__main__":
     projectdir="/home/ubuntu/joanna/VAE-IR/"
 
     # --------------------- Model: ---------------------
-    FS=48000
-    SIG_LEN=int(2.73*FS)
-    L_LEN=512
-    V_LEN=400 
-    Z_LEN=512*2
-    IR_LEN=FS
+    FS=22050
+    Z_LEN=512
     DEVICE=torch.device("cuda" if torch.cuda.is_available() else "mps")    
-    
-    model=rev2rev_custom_model.sig2ir_encdec(sig_len=SIG_LEN, l_len=L_LEN, v_len=V_LEN, z_len=Z_LEN, ir_len=IR_LEN,device=DEVICE)
+    SIG_LEN_SMPL=98304
+    N_LAYERS_REVENC=3
+    N_LAYERS_WAVEUNET=12
+
+    # load reverb encoder
+    model_ReverbEncoder=cond_waveunet_model.ReverbEncoder(x_len=SIG_LEN_SMPL, z_len=Z_LEN, N_layers=N_LAYERS_REVENC)
+    model_ReverbEncoder.to("cuda")
+    model_ReverbEncoder.eval
+    # check waveunet 
+    model_waveunet=cond_waveunet_model.waveunet(n_layers=N_LAYERS_WAVEUNET,channels_interval=24,z_channels=Z_LEN)
+    model_waveunet.to("cuda")
+    model_waveunet.eval
+
 
     # --------------------- Parameters: ---------------------
-
 
     LEARNRATE=1e-4
     N_EPOCHS=4
@@ -149,53 +161,37 @@ if __name__ == "__main__":
         "device": DEVICE,
         "batchsize": BATCH_SIZE,
         "learnrate":LEARNRATE,
-        "optimizer": torch.optim.Adam(model.parameters(), LEARNRATE),
-        "criterion": sig2ir_loss.MultiResolutionSTFTLoss(),
+        "optimizer": torch.optim.Adam(model_waveunet.parameters(), LEARNRATE),
+        "audio_criterion": cond_waveunet_loss.MultiResolutionSTFTLoss(),
+        "emb_criterion": torch.nn.CosineSimilarity(dim=2,eps=1e-8),
         "datasavepath": projectdir + 'models/'
         }
     
     # --------------------- Dataset: ---------------------
 
-    # Set random seed for NumPy, Pandas, and PyTorch
-    seed = 42
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-    torch.cuda.empty_cache()
+    STYLE_RIR ="/home/ubuntu/Data/ACE-Single/Lecture_Room_1/1/Single_508_1_RIR.wav"
+    CONTENT_RIR="anechoic"
 
-    # set up sources of RIRs and audios for dataset
-    AUDIO_INFO_FILE = "/home/ubuntu/joanna/VAE-IR/audio_VCTK_datura.csv"
-    IR_INFO_FILE = "/home/ubuntu/joanna/VAE-IR/irstats_ARNIandBUT_datura.csv"
+    DF_METADATA="/home/ubuntu/joanna/reverb-match-cond-u-net/notebooks/data_set_check.csv" 
+  
+    df_ds=pd.read_csv(DF_METADATA,index_col=0)
 
-    df_audiopool=pd.read_csv(AUDIO_INFO_FILE,index_col=0)
-    df_irs=pd.read_csv(IR_INFO_FILE,index_col=0)
-    df_irs=df_irs.head(10)
+    import torch.multiprocessing as mp
+    mp.set_start_method('spawn')
 
-    # create a tag for dataset info file 
-    dataset=sig2ir_datasetprep.Dataset_SpeechInSpace(df_audiopool,df_irs,sr=FS, ir_len=FS*2, 
-                                  sig_len=SIG_LEN, N_per_ir=1e1)
-    
-    # split dataset into training set, test set and validation set
-    N_train = round(len(dataset) * 0.5)
-    N_rest = len(dataset) - N_train
-    trainset, restset = random_split(dataset, [N_train, N_rest])
-    N_test = round(len(restset) * 0.5)
-    N_val = len(restset) - N_test
-    testset, valset = random_split(restset, [N_test, N_val])
-    
-    # save info about dataset
-    current_datetime = datetime.now()
-    nametag = current_datetime.strftime("%d-%m-%Y_%H-%M")
-    dataset.save_dataset_info(TRAINPARAMS["datasavepath"],nametag)
+    trainset=cond_waveunet_dataset.DatasetReverbTransfer(df_ds,sr=48e3,sig_len=SIG_LEN_SMPL,split="train",content_ir=CONTENT_RIR,style_ir=STYLE_RIR,device=DEVICE)
+    testset=cond_waveunet_dataset.DatasetReverbTransfer(df_ds,sr=48e3,sig_len=SIG_LEN_SMPL,split="test",content_ir=CONTENT_RIR,style_ir=STYLE_RIR,device=DEVICE)
+    valset=cond_waveunet_dataset.DatasetReverbTransfer(df_ds,sr=48e3,sig_len=SIG_LEN_SMPL,split="val",content_ir=CONTENT_RIR,style_ir=STYLE_RIR,device=DEVICE)
 
     # create dataloaders
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=BATCH_SIZE, shuffle=True, num_workers=6,pin_memory=True)
-    valloader = torch.utils.data.DataLoader(valset, batch_size=BATCH_SIZE, shuffle=True, num_workers=6,pin_memory=True)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=BATCH_SIZE, shuffle=True, num_workers=6,pin_memory=True)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=BATCH_SIZE, shuffle=True, num_workers=6)
+    valloader = torch.utils.data.DataLoader(valset, batch_size=BATCH_SIZE, shuffle=True, num_workers=6)
+    testloader = torch.utils.data.DataLoader(testset, batch_size=BATCH_SIZE, shuffle=True, num_workers=6)
+
+
 
     # --------------------- Training: ---------------------
-    train_and_test(model, trainloader, valloader, testloader, TRAINPARAMS, 1)
+    train_and_test(model_ReverbEncoder, model_waveunet, trainloader, valloader, testloader, TRAINPARAMS, 1)
 
 
 
