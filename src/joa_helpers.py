@@ -83,10 +83,10 @@ def torch_resample_if_needed(audio,sr,sr_target):
     return audio
 
 
-def get_nonsilent_frame(audio,L_win_samples,device):
+def get_nonsilent_frame(audio,L_win_samples):
     if audio.shape[1]<L_win_samples:
         # if signal shorter than desired datapoint length - pad and take directly
-        sig_out = torch.zeros(1, int(L_win_samples),device=device)
+        sig_out = torch.zeros(1, int(L_win_samples))
         sig_out[:,:audio.shape[1]] = audio
         chosen_frame=sig_out
     else:

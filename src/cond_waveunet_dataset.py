@@ -12,20 +12,20 @@ import scipy.signal as signal
 
 class DatasetReverbTransfer(Dataset):
 
-    def __init__(self,df_ds,sr=48e3,sig_len=48e3*2.73,split="train",content_ir=None,style_ir=None,device="cuda"):
+    def __init__(self,args):
 
-        self.df_ds = df_ds[df_ds["split"]==split] # pd data frame with metadata 
+        self.df_ds = args.df_ds[args.df_ds["split"]==args.split] # pd data frame with metadata 
         # Create a custom index with consecutive pairs
         # (a datapoint will constist of a mixture of two signals)
         custom_index = np.repeat(np.arange(len(self.df_ds)//2), 2)
         self.df_ds = self.df_ds.copy() # to prevent "SettingWithCopy" warning
         self.df_ds.loc[:, "pair_idx"] = custom_index
-        self.sig_len=sig_len # length of input waveform 
-        self.sr=int(sr) # sampling rate
-        self.split = split # train/test/val
-        self.device=device
-        self.content_ir=content_ir
-        self.style_ir=style_ir
+        self.sig_len=args.sig_len # length of input waveform 
+        self.fs=args.fs # sampling rate
+        self.split = args.split # train/test/val
+        self.device=args.device
+        self.content_ir=args.content_rir
+        self.style_ir=args.style_rir
 
     def __len__(self):
         return int(len(self.df_ds)/2)
@@ -36,12 +36,12 @@ class DatasetReverbTransfer(Dataset):
         df_pair=df_pair.reset_index()
 
         # Load signals (and resample if needed)
-        sContent = hlp.torch_load_mono(df_pair["speech_file_path"][0],self.sr)
-        sStyle = hlp.torch_load_mono(df_pair["speech_file_path"][1],self.sr)
-        nContent = hlp.torch_load_mono(df_pair["noise_file_path"][0],self.sr)
-        nStyle = hlp.torch_load_mono(df_pair["noise_file_path"][1],self.sr)
+        sContent = hlp.torch_load_mono(df_pair["speech_file_path"][0],self.fs)
+        sStyle = hlp.torch_load_mono(df_pair["speech_file_path"][1],self.fs)
+        nContent = hlp.torch_load_mono(df_pair["noise_file_path"][0],self.fs)
+        nStyle = hlp.torch_load_mono(df_pair["noise_file_path"][1],self.fs)
 
-        # Crop signals  
+        # Crop signals to a desired length
         sContent=hlp.get_nonsilent_frame(sContent,self.sig_len)
         sStyle=hlp.get_nonsilent_frame(sStyle,self.sig_len)
         nContent=hlp.get_nonsilent_frame(nContent,self.sig_len)
@@ -53,25 +53,21 @@ class DatasetReverbTransfer(Dataset):
         # can have a different ir. This reflects if we want to learn one-to-one, many-to-one, one-to-many, or many-to-many. 
 
         if self.content_ir is None:
-            irContent = hlp.torch_load_mono(df_pair["ir_file_path"][0],self.sr)
+            irContent = hlp.torch_load_mono(df_pair["ir_file_path"][0],self.fs)
         elif self.content_ir=="anechoic":
-            irContent = torch.cat((torch.tensor([[1.0]]), torch.zeros((1,self.sr-1))),1)
+            irContent = torch.cat((torch.tensor([[1.0]]), torch.zeros((1,self.fs-1))),1)
         else: 
-            irContent = hlp.torch_load_mono(self.content_ir,self.sr)
+            irContent = hlp.torch_load_mono(self.content_ir,self.fs)
             
         if self.style_ir is None:
-            irStyle = hlp.torch_load_mono(df_pair["ir_file_path"][1],self.sr)
+            irStyle = hlp.torch_load_mono(df_pair["ir_file_path"][1],self.fs)
         else: 
-            irStyle = hlp.torch_load_mono(self.style_ir,self.sr)
+            irStyle = hlp.torch_load_mono(self.style_ir,self.fs)
 
         # Convolve signals with impulse responses
         sContent_rev = torch.from_numpy(scipy.signal.fftconvolve(sContent, irContent,mode="same"))
         sStyle_rev = torch.from_numpy(scipy.signal.fftconvolve(sStyle, irStyle,mode="same"))
         sTarget_rev = torch.from_numpy(scipy.signal.fftconvolve(sContent, irStyle,mode="same"))
-
-        # sContent_rev=torchaudio.functional.convolve(sContent, irContent,mode="same")
-        # sStyle_rev=torchaudio.functional.convolve(sStyle, irStyle,mode="same")
-        # sTarget_rev=torchaudio.functional.convolve(sContent, irStyle,mode="same")
 
         # Add noise to signals
         snr1=df_pair["snr"][0]
@@ -84,30 +80,4 @@ class DatasetReverbTransfer(Dataset):
         sStyle_in=hlp.torch_standardize_max_abs(sStylen_noisyrev)
         sTarget_out=hlp.torch_standardize_max_abs(sTarget_rev)
 
-        # return in the format (batch_size, in_channels, input_length)
         return sContent_in, sStyle_in, sTarget_out
-
-if __name__ == "__main__":
-
-    # # ---- check if the dataset definition is correct: ----
-    STYLE_RIR_FILE ="/home/ubuntu/Data/ACE-Single/Lecture_Room_1/1/Single_508_1_RIR.wav"
-    DF_METADATA="/home/ubuntu/joanna/reverb-match-cond-u-net/notebooks/check_data_set.csv" 
-    SAMPLING_RATE=int(48e3)
-    SIG_LEN_SEC=2 # TODO: instead of only cropping -> cut or zero-pad 
-
-    df_ds=pd.read_csv(DF_METADATA,index_col=0)
-    DEVICE="cuda"
-
-    # create a tag for dataset info file 
-    dataset=DatasetReverbTransfer(df_ds,sr=48e3,sig_len=98304,split="train",content_ir=None,style_ir=STYLE_RIR_FILE,device=DEVICE)
-
-    import time
-    start_time = time.time()
-    sContent_in, sStyle_in, sTarget_out = dataset[39]
-    end_time = time.time()
-    elapsed_time = end_time - start_time
-    print(f"{elapsed_time=}")
-
-    # create a tag for dataset info file
-    print("Number of data points:" + str(len(dataset)))
-    print("Dimensions of input data:" + str(dataset[20][0].shape))

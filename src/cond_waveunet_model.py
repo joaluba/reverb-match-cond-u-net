@@ -57,9 +57,12 @@ class ReverbEncoderBlock(nn.Module):
 
 class ReverbEncoder(nn.Module):
     # -------- Encoder: --------
-    def __init__(self, x_len=16000*3, z_len=512, N_layers=9):
+    def __init__(self, args):
         super().__init__() 
-
+        # constants
+        self.sig_len=args.sig_len
+        self.z_len=args.enc_len
+        self.N_layers=args.n_layers_revenc
         # internal parameters of the network:
         kernel_size=15
         stride=2
@@ -68,7 +71,8 @@ class ReverbEncoder(nn.Module):
         # convolutional layers are a series of encoder blocks with increasing channels
         conv_layers = []
         block_channels=1
-        for i in range(N_layers):
+        x_len=self.sig_len
+        for i in range(self.N_layers):
             conv_layers.append(ReverbEncoderBlock(block_channels, block_channels*2, kernel_size=15, stride=stride,padding=padding))
             block_channels*=2
             # compute heigth of the ouput (width=1,depth=block_channels)
@@ -83,7 +87,7 @@ class ReverbEncoder(nn.Module):
         # final mlp layers
         self.mlp = nn.Sequential(nn.Linear(block_channels, block_channels),
                                  nn.Linear(block_channels,int(block_channels/2)),
-                                 nn.Linear(int(block_channels/2),z_len))
+                                 nn.Linear(int(block_channels/2),self.z_len))
         
     def forward(self, x):
         # Convolutional residual blocks:
@@ -135,12 +139,12 @@ class UpSamplingLayer(nn.Module):
 
 class waveunet(nn.Module):
     # ------- Definition of a wave-u-net encoder-decoder ------
-    def __init__(self, n_layers=12, channels_interval=24,z_channels=512):
+    def __init__(self, args):
         super().__init__()
         # constants:
-        self.n_layers = n_layers
-        self.channels_interval = channels_interval
-        self.z_channels=z_channels
+        self.n_layers = args.n_layers_waveunet
+        self.z_channels = args.enc_len 
+        self.channels_interval = 24
         # encoder:
         encoder_in_channels_list = [1] + [i * self.channels_interval for i in range(1, self.n_layers)]
         encoder_out_channels_list = [i * self.channels_interval for i in range(1, self.n_layers + 1)]
@@ -218,38 +222,7 @@ class waveunet(nn.Module):
         o = self.out(o)
         return o
 
-# --------------------------------------------------------------------------------------------------
 
-if __name__ == "__main__":
-# ---- check if the model definitions are correct ----
-    
-    # example input tensor
-    FS=48000
-    SIG_LEN_SMPL=98304 #int(2*FS)
-    l_len=512
-    v_len=400 
-    z_len=512*2
-    ir_len=FS
-    
-    x_wave=torch.randn(1,1,SIG_LEN_SMPL).to("cuda")
-
-    # check reverb encoder
-    model=ReverbEncoder(x_len=SIG_LEN_SMPL, z_len=512, N_layers=6)
-    model.to("cuda")
-    model.eval
-    reverb_emb=model(x_wave)
-    summary(model,(1, SIG_LEN_SMPL))# torch summary expects 2 dim input for 1d conv
-    print(f"reverb encoder network input shape: {x_wave.shape}")
-    print(f"reverb encoder network output shape: {reverb_emb.shape}")
-
-    # check waveunet 
-    model=waveunet(n_layers=13,channels_interval=24,z_channels=512)
-    model.to("cuda")
-    model.eval
-    y_wave=model(x_wave,reverb_emb)
-    summary(model,[(1, SIG_LEN_SMPL),(1, 512)])# torch summary expects 2 dim input for 1d conv
-    print(f"waveunet input shape: {x_wave.shape}")
-    print(f" output shape: {y_wave.shape}")
 
 
   
