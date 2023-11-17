@@ -65,9 +65,9 @@ class DatasetReverbTransfer(Dataset):
             irStyle = hlp.torch_load_mono(self.style_ir,self.fs)
 
         # Convolve signals with impulse responses
-        sContent_rev = torch.from_numpy(scipy.signal.fftconvolve(sContent, irContent,mode="same"))
-        sStyle_rev = torch.from_numpy(scipy.signal.fftconvolve(sStyle, irStyle,mode="same"))
-        sTarget_rev = torch.from_numpy(scipy.signal.fftconvolve(sContent, irStyle,mode="same"))
+        sContent_rev = torch.from_numpy(scipy.signal.fftconvolve(sContent, irContent,mode="full"))[:,:self.sig_len]
+        sStyle_rev = torch.from_numpy(scipy.signal.fftconvolve(sStyle, irStyle,mode="full"))[:,:self.sig_len]
+        sTarget_rev = torch.from_numpy(scipy.signal.fftconvolve(sContent, irStyle,mode="full"))[:,:self.sig_len]
 
         # Add noise to signals
         snr1=df_pair["snr"][0]
