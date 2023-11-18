@@ -71,10 +71,10 @@ if __name__ == "__main__":
 
     # Save parameter combinations list to file
     date_tag = datetime.now().strftime("%d-%m-%Y--%H-%M")
-    condfilepath = args.savedir + "expconds_" + date_tag +".txt"
+    condfilepath = "runs/expconds_" + date_tag +".txt"
     lines=exp_combinations_to_file(cond_combinations,condfilepath)
 
-    i=0
+    cond_count=0
     for transf_type, learn_rate, batch_size in cond_combinations:
 
         # prepare params for this combination
@@ -90,20 +90,21 @@ if __name__ == "__main__":
 
         # create training tag based on date and params
         date_tag = datetime.now().strftime("%d-%m-%Y--%H-%M")
-        lr_tag = "_lr-"+str(args.learning_rate)
+        lr_tag = "_lr-"+str(args.learn_rate)
         bs_tag = "_bs-"+str(args.batch_size)
         transf_tag="_"+transf_type
         tag=date_tag+transf_tag+lr_tag+bs_tag
 
-        # prepare tensorflow diectory
-        args.savedir="runs/" + tag # runs/one-to-many14-11-2023--11-49_lr-0.001_bs-8
+        # prepare diectory for this training combination
+        # runs/one-to-many14-11-2023--11-49_lr-0.001_bs-8/
+        args.savedir="runs/" + tag +"/" 
 
         # train with current parameters
         setup_and_train(args)
 
         # note down finished condition
-        note_down_finished_cond(condfilepath,lines[i])
-        i+=1
+        note_down_finished_cond(condfilepath,lines[cond_count])
+        cond_count+=1
         
 
 

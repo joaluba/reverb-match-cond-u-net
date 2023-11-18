@@ -1,21 +1,14 @@
 import torch
-import torch.nn as nn 
-import torch.optim as optim
-import torch.nn.functional as F
 from tqdm import tqdm
-import numpy as np
-from torch.utils.data import DataLoader, random_split
-from torch.utils.data.sampler import SubsetRandomSampler
+from datetime import datetime
+import time
+import sys
+from torch.utils.tensorboard import SummaryWriter
+# my modules
 import cond_waveunet_dataset
 import cond_waveunet_loss
 import cond_waveunet_model
 from cond_waveunet_options import Options
-import argparse
-import pandas as pd
-import getpass
-import joa_helpers
-from datetime import datetime
-import time
 
 
 def infer_and_compute_loss(model_reverbenc, model_waveunet, emb_criterion, audio_criterion, data,device):
@@ -38,9 +31,7 @@ def infer_and_compute_loss(model_reverbenc, model_waveunet, emb_criterion, audio
 
 
 def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, testloader, args):
-    
-    # create training tag based on date
-    tag = datetime.now().strftime("%d-%m-%Y--%H-%M")
+
     # training parameters
     device = args.device
     if args.audio_criterion=="multi_stft_loss":
@@ -53,8 +44,14 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
     num_epochs = args.num_epochs
     savedir = args.savedir
     store_outputs = args.store_outputs
-    
 
+    # initialize tensorboard writer 
+    writer=SummaryWriter(args.savedir) 
+    # save training parameters
+    if (store_outputs):
+        torch.save(args, savedir+'trainargs.pt')  
+
+    
     # move components to device
     audio_criterion=audio_criterion.to(device)
     emb_criterion=emb_criterion.to(device)
@@ -67,7 +64,6 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
     # ------------- TRAINING START: -------------
     start = time.time()
     for epoch in range(num_epochs):
-
 
         # ----- Training loop for this epoch: -----
         model_waveunet.train()
@@ -86,6 +82,7 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
             optimizer_reverbenc.step()
             # compute loss for the current batch
             train_loss += loss.item()
+            writer.add_scalar('TrainLoss', loss.item()/args.batch_size, epoch * len(trainloader) + j) # tensorboard
 
         # ----- Validation loop for this epoch: -----
         model_waveunet.eval() 
@@ -97,6 +94,7 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
                 loss=infer_and_compute_loss(model_reverbenc, model_waveunet, emb_criterion, audio_criterion, data,device)
                 # compute loss for the current batch
                 val_loss += loss.item()
+                writer.add_scalar('ValLoss', loss.item()/args.batch_size, epoch * len(valloader) + j) # tensorboard
         
         # Print stats at the end of the epoch
         num_samples_train=len(trainloader.sampler)
@@ -105,22 +103,22 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
         avg_val_loss = val_loss / num_samples_val
         loss_evol.append((avg_train_loss,avg_val_loss))
         print(f'Epoch: {epoch}, Train. Loss: {avg_train_loss:.5f}, Val. Loss: {avg_val_loss:.5f}')
-  
-        # Save checkpoint
+        
+        # Save checkpoint (overwrite)
         if (store_outputs) & (epoch % 3 ==0):
             torch.save({
                         'epoch': epoch,
                         'model_waveunet_state_dict': model_waveunet.state_dict(),
                         'model_reverbenc_state_dict': model_reverbenc.state_dict(),
-                        'optimizer_state_dict': optimizer.state_dict(),
+                        'optimizer_waveunet_state_dict': optimizer_waveunet.state_dict(),
+                        'optimizer_reverbenc_state_dict': optimizer_reverbenc.state_dict(),
                         'loss': loss_evol,
-                        }, savedir+tag+'.pt')
+                        }, savedir+'checkpoint' +str(epoch)+'.pt')
   
     end=time.time()
     print(f"Finished training after: {(end-start)} seconds")
-    # Save parameters
-    if (store_outputs):
-        torch.save(args, savedir+tag+'_args.pt')    
+
+    writer.close() # tensorboard  
 
     # ------------- TESTING START: -------------
     model_waveunet.eval() 
@@ -139,7 +137,6 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
     print(f'Test. Loss: {avg_test_loss:.5f}')
 
 
-
 if __name__ == "__main__":
     # ---- test training loop ----
 
@@ -148,10 +145,8 @@ if __name__ == "__main__":
     # ---- MODEL: ----
     # load reverb encoder
     model_ReverbEncoder=cond_waveunet_model.ReverbEncoder(args)
-    model_ReverbEncoder.to("cuda")
-    # check waveunet 
+    # laod waveunet 
     model_waveunet=cond_waveunet_model.waveunet(args)
-    model_waveunet.to("cuda")
 
     # ---- DATASET: ----
     args.split="train"
@@ -165,6 +160,10 @@ if __name__ == "__main__":
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=6,pin_memory=True)
     valloader = torch.utils.data.DataLoader(valset, batch_size=args.batch_size, shuffle=True, num_workers=6,pin_memory=True)
     testloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size, shuffle=True, num_workers=6,pin_memory=True)
+
+    # move models to gpu
+    model_ReverbEncoder.to(args.device)
+    model_waveunet.to(args.device)
 
     # --------------------- Training: ---------------------
     train_and_test(model_ReverbEncoder, model_waveunet, trainloader, valloader, testloader, args)
