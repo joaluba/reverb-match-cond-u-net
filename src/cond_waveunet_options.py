@@ -28,7 +28,7 @@ class Options():
 
         # general arguments
         parser.add_argument('--projectdir', default="/home/ubuntu/joanna/reverb-match-cond-u-net/", type=str)
-        parser.add_argument('--savedir', default="/home/ubuntu/joanna/reverb-match-cond-u-net/results/", type=str)
+        parser.add_argument('--savedir', default="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/", type=str)
         parser.add_argument('--device', default="cuda", type=str)
         parser.add_argument('--fs', default=48000, type=int)
 
@@ -40,9 +40,9 @@ class Options():
 
         # dataset parameters
         parser.add_argument('--style_rir', default="/home/ubuntu/Data/ACE-Single/Lecture_Room_1/1/Single_508_1_RIR.wav", type=str)
-        parser.add_argument('--content_rir', default="anechoic", type=str)
+        parser.add_argument('--content_rir', default=None, type=str)
         parser.add_argument('--df_metadata', 
-                            default="/home/ubuntu/joanna/reverb-match-cond-u-net/notebooks/nonoise1_data_set.csv" , type=str)
+                            default="/home/ubuntu/joanna/reverb-match-cond-u-net/notebooks/nonoise2_data_set.csv" , type=str)
         # training arguments
         parser.add_argument('--num_epochs', default=30, type=int)
         parser.add_argument('--batch_size', default=24, type=int)

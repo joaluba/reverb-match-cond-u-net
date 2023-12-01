@@ -62,7 +62,7 @@ if __name__ == "__main__":
     args = Options().parse()
 
     # Conditions of the experiment
-    cond_trasf_type = ["one-to-many", "many-to-many"]
+    cond_trasf_type = ["many-to-many","one-to-many"]
     cond_learn_rate = [1e-3, 1e-4, 1e-5]
     cond_batch_size = [8, 24]
 

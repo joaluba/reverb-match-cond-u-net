@@ -81,3 +81,15 @@ class DatasetReverbTransfer(Dataset):
         sTarget_out=hlp.torch_standardize_max_abs(sTarget_rev)
 
         return sContent_in, sStyle_in, sTarget_out
+    
+    def get_info(self,index,style=True):
+
+        df_pair=self.df_ds[self.df_ds["pair_idx"]==index]
+
+        if style:
+            styleorcontent_idx=1
+        else:
+            styleorcontent_idx=0
+
+        df=df_pair.iloc[styleorcontent_idx]
+        return df

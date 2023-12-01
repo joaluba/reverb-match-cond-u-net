@@ -10,7 +10,20 @@ import cond_waveunet_loss
 import cond_waveunet_model
 from cond_waveunet_options import Options
 
-
+def infer(model_reverbenc, model_waveunet, data, device):
+    with torch.no_grad():
+        # Function to infer target audio
+        # ------------------------------
+        # get datapoint
+        sContent_in = data[0].to(device)
+        sStyle_in=data[1].to(device)
+        sTarget_gt=data[2].to(device)
+        # forward pass - get prediction of the ir
+        embedding_gt=model_reverbenc(sStyle_in)
+        sTarget_prediction=model_waveunet(sContent_in,embedding_gt)
+        return sContent_in, sStyle_in, sTarget_gt, sTarget_prediction
+    
+    
 def infer_and_compute_loss(model_reverbenc, model_waveunet, emb_criterion, audio_criterion, data,device):
     # Function to infer target and compute loss - same for training, testing and validation
     # -------------------------------------------------------------------------------------
@@ -82,7 +95,16 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
             optimizer_reverbenc.step()
             # compute loss for the current batch
             train_loss += loss.item()
-            writer.add_scalar('TrainLoss', loss.item()/args.batch_size, epoch * len(trainloader) + j) # tensorboard
+            writer.add_scalar('TrainLossPerBatch', loss.item()/args.batch_size, epoch * len(trainloader) + j) # tensorboard
+
+            # lod audios to tensorboard:
+            if j==0:
+                _,_,sTarget_gt, sTarget_prediction=infer(model_reverbenc, model_waveunet, data, args.device)
+                for i in range(5):
+                    wave_target=sTarget_gt[i,:,:].squeeze(0)
+                    wave_predict=sTarget_prediction[i,:,:].squeeze(0)
+                    writer.add_audio(f'Target_dp{i}', wave_target/wave_target.abs().max(), torch.tensor(args.fs))
+                    writer.add_audio(f'Predict_dp{i}', wave_predict/wave_predict.abs().max(), torch.tensor(args.fs))
 
         # ----- Validation loop for this epoch: -----
         model_waveunet.eval() 
@@ -91,17 +113,19 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
             val_loss=0
             for j,data in tqdm(enumerate(valloader),total = len(valloader)):
                  # infer and compute loss
-                loss=infer_and_compute_loss(model_reverbenc, model_waveunet, emb_criterion, audio_criterion, data,device)
+                loss=infer_and_compute_loss(model_reverbenc, model_waveunet, emb_criterion, audio_criterion, data,device) 
                 # compute loss for the current batch
                 val_loss += loss.item()
-                writer.add_scalar('ValLoss', loss.item()/args.batch_size, epoch * len(valloader) + j) # tensorboard
-        
+
+               
         # Print stats at the end of the epoch
         num_samples_train=len(trainloader.sampler)
         num_samples_val=len(valloader.sampler)
         avg_train_loss = train_loss / num_samples_train
         avg_val_loss = val_loss / num_samples_val
-        loss_evol.append((avg_train_loss,avg_val_loss))
+        loss_evol.append((avg_train_loss,avg_val_loss)) # tensorboard
+        writer.add_scalar('TrainLoss', avg_train_loss, epoch) # tensorboard
+        writer.add_scalar('ValLoss', avg_val_loss, epoch)
         print(f'Epoch: {epoch}, Train. Loss: {avg_train_loss:.5f}, Val. Loss: {avg_val_loss:.5f}')
         
         # Save checkpoint (overwrite)
@@ -131,10 +155,15 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
             # compute loss for the current batch
             test_loss += loss.item()
 
+
+    
     # Print stats at the end of the epoch
     num_samples_test=len(testloader.sampler)
     avg_test_loss = test_loss / num_samples_test
     print(f'Test. Loss: {avg_test_loss:.5f}')
+    
+    # log audios to tensorboard
+
 
 
 if __name__ == "__main__":
