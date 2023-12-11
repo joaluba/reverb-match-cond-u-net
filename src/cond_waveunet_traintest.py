@@ -73,6 +73,7 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
 
     # allocate variable to track loss evolution 
     loss_evol=[]
+    best_val_loss=float("inf")
     
     # ------------- TRAINING START: -------------
     start = time.time()
@@ -129,7 +130,7 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
         print(f'Epoch: {epoch}, Train. Loss: {avg_train_loss:.5f}, Val. Loss: {avg_val_loss:.5f}')
         
         # Save checkpoint (overwrite)
-        if (store_outputs) & (epoch % 3 ==0):
+        if (store_outputs) & (epoch % args.checkpoint_step ==0):
             torch.save({
                         'epoch': epoch,
                         'model_waveunet_state_dict': model_waveunet.state_dict(),
@@ -138,6 +139,18 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
                         'optimizer_reverbenc_state_dict': optimizer_reverbenc.state_dict(),
                         'loss': loss_evol,
                         }, savedir+'checkpoint' +str(epoch)+'.pt')
+            
+        # Early stopping: stop when validation loss doesnt improve for 10 epochs
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            counter = 0
+        else:
+            counter += 1
+            print(f'Loss did not decrease x{counter}.')
+
+        if counter >= 14:
+            print(f'Early stopping after {counter +1} epochs without improvement.')
+            break
   
     end=time.time()
     print(f"Finished training after: {(end-start)} seconds")

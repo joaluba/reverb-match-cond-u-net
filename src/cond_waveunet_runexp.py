@@ -3,6 +3,7 @@ from tqdm import tqdm
 from datetime import datetime
 import time
 import sys
+import os
 from torch.utils.tensorboard import SummaryWriter
 from itertools import product
 import json
@@ -26,11 +27,12 @@ def exp_combinations_to_file(combinations, file_path):
         lines = file.readlines()
     return lines
 
-def note_down_finished_cond(file_path,line): 
+def note_down_finished_cond(file_path,line,wheresaved): 
     # Open the file again in write mode to overwrite its content with the appended word
     with open(file_path, 'a') as file:
             # Append the word to the end of each line and write it back to the file
-            file.write("Finished combination: " + line.strip() + " \n" )
+            new_line = line.strip().replace("Scheduled", "Finished")
+            file.write(new_line + ". \n"+ "-> Saved as:" + wheresaved + " \n" )
 
 
 def setup_and_train(args):
@@ -63,15 +65,20 @@ if __name__ == "__main__":
 
     # Conditions of the experiment
     cond_trasf_type = ["many-to-many","one-to-many"]
-    cond_learn_rate = [1e-3, 1e-4, 1e-5]
-    cond_batch_size = [8, 24]
+    cond_learn_rate = [1e-4]
+    cond_batch_size = [8]
 
     # Conditions combinations list
     cond_combinations = list(product(cond_trasf_type, cond_learn_rate, cond_batch_size))
 
-    # Save parameter combinations list to file
-    date_tag = datetime.now().strftime("%d-%m-%Y--%H-%M")
-    condfilepath = "runs/expconds_" + date_tag +".txt"
+    # Create folder for storing results of this experiment
+    date_tag = datetime.now().strftime("%d-%m-%Y")
+    runexp_savepath=os.path.join(args.savedir,"runs-exp-"+date_tag)
+    if not os.path.exists(runexp_savepath):
+        os.makedirs(runexp_savepath)
+
+    # Save parameter combinations list to file (to track progress of training)
+    condfilepath = os.path.join(runexp_savepath,"expconds_" + date_tag +".txt")
     lines=exp_combinations_to_file(cond_combinations,condfilepath)
 
     cond_count=0
@@ -96,14 +103,13 @@ if __name__ == "__main__":
         tag=date_tag+transf_tag+lr_tag+bs_tag
 
         # prepare diectory for this training combination
-        # runs/one-to-many14-11-2023--11-49_lr-0.001_bs-8/
-        args.savedir="runs/" + tag +"/" 
+        args.savedir=os.path.join(runexp_savepath,tag) 
 
         # train with current parameters
         setup_and_train(args)
 
         # note down finished condition
-        note_down_finished_cond(condfilepath,lines[cond_count])
+        note_down_finished_cond(condfilepath,lines[cond_count], args.savedir)
         cond_count+=1
         
 
