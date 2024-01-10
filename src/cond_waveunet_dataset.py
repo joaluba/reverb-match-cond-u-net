@@ -38,14 +38,14 @@ class DatasetReverbTransfer(Dataset):
         # Load signals (and resample if needed)
         sContent = hlp.torch_load_mono(df_pair["speech_file_path"][0],self.fs)
         sStyle = hlp.torch_load_mono(df_pair["speech_file_path"][1],self.fs)
-        nContent = hlp.torch_load_mono(df_pair["noise_file_path"][0],self.fs)
-        nStyle = hlp.torch_load_mono(df_pair["noise_file_path"][1],self.fs)
+        # nContent = hlp.torch_load_mono(df_pair["noise_file_path"][0],self.fs)
+        # nStyle = hlp.torch_load_mono(df_pair["noise_file_path"][1],self.fs)
 
         # Crop signals to a desired length
         sContent=hlp.get_nonsilent_frame(sContent,self.sig_len)
         sStyle=hlp.get_nonsilent_frame(sStyle,self.sig_len)
-        nContent=hlp.get_nonsilent_frame(nContent,self.sig_len)
-        nStyle=hlp.get_nonsilent_frame(nStyle,self.sig_len)
+        # nContent=hlp.get_nonsilent_frame(nContent,self.sig_len)
+        # nStyle=hlp.get_nonsilent_frame(nStyle,self.sig_len)
 
         # Load impulse responses
         # Note: If self.content_ir is not empty, it means that we want all content audios to have the same target ir,
@@ -72,8 +72,11 @@ class DatasetReverbTransfer(Dataset):
         # Add noise to signals
         snr1=df_pair["snr"][0]
         snr2=df_pair["snr"][1]
-        sContent_noisyrev=hlp.torch_mix_and_set_snr(sContent_rev,nContent,snr1)
-        sStylen_noisyrev=hlp.torch_mix_and_set_snr(sStyle_rev,nStyle,snr2)
+        # sContent_noisyrev=hlp.torch_mix_and_set_snr(sContent_rev,nContent,snr1)
+        # sStylen_noisyrev=hlp.torch_mix_and_set_snr(sStyle_rev,nStyle,snr2)
+        sContent_noisyrev=sContent_rev
+        sStylen_noisyrev=sStyle_rev
+
 
         # scale data but preserve symmetry
         sContent_in=hlp.torch_standardize_max_abs(sContent_noisyrev)

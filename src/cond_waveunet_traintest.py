@@ -83,7 +83,11 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
         model_waveunet.train()
         model_reverbenc.train()
         train_loss=0
+        end = time.time()
         for j,data in tqdm(enumerate(trainloader),total = len(trainloader)):
+            # measure data loading time (how much time of the training loop is spent on waiting on the next batch)
+            # - should be zero if the data loading is not a bottleneck
+            data_time.update(time.time() - end)     
             # infer and compute loss
             loss=infer_and_compute_loss(model_reverbenc, model_waveunet, emb_criterion, audio_criterion, data,device)
             # empty gradient
@@ -106,6 +110,9 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
                     wave_predict=sTarget_prediction[i,:,:].squeeze(0)
                     writer.add_audio(f'Target_dp{i}', wave_target/wave_target.abs().max(), torch.tensor(args.fs))
                     writer.add_audio(f'Predict_dp{i}', wave_predict/wave_predict.abs().max(), torch.tensor(args.fs))
+
+            # measure time required to process one batch 
+            batch_time.update(time.time() - end)
 
         # ----- Validation loop for this epoch: -----
         model_waveunet.eval() 
