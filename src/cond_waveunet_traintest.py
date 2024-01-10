@@ -10,6 +10,7 @@ import cond_waveunet_loss
 import cond_waveunet_model
 from cond_waveunet_options import Options
 
+
 def infer(model_reverbenc, model_waveunet, data, device):
     with torch.no_grad():
         # Function to infer target audio
@@ -85,9 +86,11 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
         train_loss=0
         end = time.time()
         for j,data in tqdm(enumerate(trainloader),total = len(trainloader)):
-            # measure data loading time (how much time of the training loop is spent on waiting on the next batch)
-            # - should be zero if the data loading is not a bottleneck
-            data_time.update(time.time() - end)     
+
+            # # measure data loading time (how much time of the training loop is spent on waiting on the next batch)
+            # # - should be zero if the data loading is not a bottleneck
+            # print(f"Time to load data: {time.time() - end}")     
+            
             # infer and compute loss
             loss=infer_and_compute_loss(model_reverbenc, model_waveunet, emb_criterion, audio_criterion, data,device)
             # empty gradient
@@ -111,8 +114,9 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
                     writer.add_audio(f'Target_dp{i}', wave_target/wave_target.abs().max(), torch.tensor(args.fs))
                     writer.add_audio(f'Predict_dp{i}', wave_predict/wave_predict.abs().max(), torch.tensor(args.fs))
 
-            # measure time required to process one batch 
-            batch_time.update(time.time() - end)
+            # # measure time required to process one batch 
+            # print(f"Time to process a batch: {time.time() - end}")
+            # end = time.time()  
 
         # ----- Validation loop for this epoch: -----
         model_waveunet.eval() 
@@ -190,6 +194,7 @@ if __name__ == "__main__":
     # ---- test training loop ----
 
     args = Options().parse()
+    args.batch_size=24
 
     # ---- MODEL: ----
     # load reverb encoder
