@@ -26,36 +26,6 @@ def compute_ir_stats(filename,bands):
 
     return rt30,rt20,edt,c50
 
-def plot_scene_raw(room_dims,l_mic_pos,l_src_pos,perspective="xy"):
-#   function to plot the enumerated sources and receivers 
-#   room_dims - dimensions of the room [x,y,z]
-#   l_mic_pos - list of mic positions [[x,y,z],...,[x,y,z]]
-#   l_src_pos - list of source positions [[x,y,z],...,[x,y,z]]
-#   perspective - which two dimensions to show 
-    if perspective=="xy":
-        dim1=1
-        dim2=0
-    elif perspective=="yz":
-        dim1=2
-        dim2=1
-    elif perspective=="xz":
-        dim1=2
-        dim2=0
-    fig = plt.figure()
-    ax = fig.add_subplot()
-    plt.xlim((0,room_dims[dim1]))
-    plt.ylim((0,room_dims[dim2]))
-
-    for i,rec_pos in enumerate(l_mic_pos):
-        plt.plot(rec_pos[dim1],rec_pos[dim2], "o", ms=3, mew=2, color="blue")
-        plt.annotate(str(i), (rec_pos[dim1],rec_pos[dim2]))
-
-    for i,src_pos in enumerate(l_src_pos):
-        plt.plot(src_pos[dim1],src_pos[dim2], "o", ms=3, mew=2, color="red")
-        plt.annotate(str(i), (src_pos[dim1],src_pos[dim2]))
-
-    ax.set_aspect('equal', adjustable='box')
-
 def cut_or_zeropad(sig_in, len_smpl):
     if sig_in.shape[1]<len_smpl:
         sig_out = torch.zeros(1, int(len_smpl))
@@ -63,7 +33,6 @@ def cut_or_zeropad(sig_in, len_smpl):
     else:
         sig_out=sig_in[:,:int(len_smpl)]
     return sig_out
-
 
 def torch_standardize_std(sig_in):
     mu = torch.mean(sig_in)
@@ -91,7 +60,7 @@ def get_nonsilent_frame(audio,L_win_samples):
         chosen_frame=sig_out
     else:
         E_mean=10*torch.log10(torch.sum(audio**2))
-        E_thresh=E_mean-15
+        E_thresh=E_mean-10
         E_frame=-100
         while E_frame<E_thresh:
             idx_start= torch.randint(0, audio.shape[1]-L_win_samples, (1,))
