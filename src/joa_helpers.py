@@ -59,13 +59,17 @@ def get_nonsilent_frame(audio,L_win_samples):
         sig_out[:,:audio.shape[1]] = audio
         chosen_frame=sig_out
     else:
-        E_mean=10*torch.log10(torch.sum(audio**2))
-        E_thresh=E_mean-10
+        E_rms=10*torch.log10(torch.sqrt(torch.mean(torch.square(audio))))
+        E_thresh=E_rms-10
         E_frame=-100
+        tries=0
         while E_frame<E_thresh:
             idx_start= torch.randint(0, audio.shape[1]-L_win_samples, (1,))
             chosen_frame=audio[:,idx_start:idx_start+L_win_samples]
-            E_frame=10*torch.log10(torch.sum(chosen_frame**2))
+            E_frame=10*torch.log10(torch.sqrt(torch.mean(torch.square(chosen_frame))))
+            tries+=1
+            if tries>=100:
+                print("cannot find silent frame")
     return chosen_frame
 
 

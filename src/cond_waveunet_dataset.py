@@ -44,6 +44,11 @@ class DatasetReverbTransfer(Dataset):
         # Crop signals to a desired length
         sContent=hlp.get_nonsilent_frame(sContent,self.sig_len)
         sStyle=hlp.get_nonsilent_frame(sStyle,self.sig_len)
+        # Apply phase shift or none
+        sContent*=torch.tensor(df_pair["aug_phase"][0])
+        sStyle*=torch.tensor(df_pair["aug_phase"][1])
+        
+
         # nContent=hlp.get_nonsilent_frame(nContent,self.sig_len)
         # nStyle=hlp.get_nonsilent_frame(nStyle,self.sig_len)
 
@@ -83,7 +88,7 @@ class DatasetReverbTransfer(Dataset):
         sStyle_in=hlp.torch_standardize_max_abs(sStylen_noisyrev)
         sTarget_out=hlp.torch_standardize_max_abs(sTarget_rev)
 
-        return sContent_in, sStyle_in, sTarget_out
+        return sContent_in, sStyle_in, sTarget_out, sContent
     
     def get_info(self,index,style=True):
 

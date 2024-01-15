@@ -111,11 +111,10 @@ def infer(model_reverbenc, model_waveunet, data, device):
 def eval_speechmetrics(model_reverbenc, model_waveunet,  testloader, args):
 
     device=args.device
+    
+    audio_criterion = cond_waveunet_loss.MultiResolutionSTFTLoss()
 
-    if args.audio_criterion=="multi_stft_loss":
-        audio_criterion = cond_waveunet_loss.MultiResolutionSTFTLoss()
-    if args.emb_criterion=="cosine_similarity":
-        emb_criterion = torch.nn.CosineSimilarity(dim=2,eps=1e-8)
+    emb_criterion = torch.nn.CosineSimilarity(dim=2,eps=1e-8)
 
     # move components to device
     model_reverbenc=model_reverbenc.to(device)
@@ -155,7 +154,7 @@ if __name__ == "__main__":
 
     from torch.utils.data import Subset
 
-    resultsdir="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-11-12-2023/"
+    resultsdir="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-12-01-2024/"
 
     scores_all_models = pd.DataFrame({'label': [],
                 'nb_pesq_input': [], 'pesq_input': [], 'stoi_input': [],  'stftloss_input': [],
@@ -204,7 +203,7 @@ if __name__ == "__main__":
                     print(f"Saved intermediate results")
 
 
-    scores_all_models.to_csv(resultsdir+'evaluation_metrics_evol.csv', index=False)
+    scores_all_models.to_csv(resultsdir+'evaluation_metrics.csv', index=False)
     print(f"Saved final results")
 
 

@@ -44,13 +44,12 @@ class Options():
         parser.add_argument('--df_metadata', 
                             default="/home/ubuntu/joanna/reverb-match-cond-u-net/notebooks/nonoise2_data_set.csv" , type=str)
         # training arguments
-        parser.add_argument('--num_epochs', default=300, type=int)
-        parser.add_argument('--checkpoint_step', default=30, type=int)
+        parser.add_argument('--num_epochs', default=100, type=int)
+        parser.add_argument('--checkpoint_step', default=20, type=int)
         parser.add_argument('--batch_size', default=8, type=int)
         parser.add_argument('--learn_rate', default=1e-4, type=float)
         parser.add_argument('--optimizer', default="adam", type=str) # see below
-        parser.add_argument('--audio_criterion', default="multi_stft_loss", type=str)
-        parser.add_argument('--emb_criterion', default="cosine_similarity", type=str)
+        parser.add_argument('--losstype', default="stft", type=str)
         parser.add_argument('--store_outputs', default=True, type=bool)
         parser.add_argument('--split', default="test", type=str)
 

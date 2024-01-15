@@ -168,8 +168,71 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
         mag_loss /= len(self.stft_losses)
 
         return sc_loss, mag_loss
+
+class LossOfChoice(torch.nn.Module):
+    def __init__(self,args):
+        super().__init__()
+        self.losstype=args.losstype
+        self.load_criterions(args.device)
+
+    def load_criterions(self,device):
+        if self.losstype=="stft":
+            self.criterion_audio=MultiResolutionSTFTLoss().to(device)
+
+        elif self.losstype=="stft+rev":
+            self.criterion_audio=MultiResolutionSTFTLoss().to(device)
+
+        elif self.losstype=="stft+emb":
+            self.criterion_audio=MultiResolutionSTFTLoss().to(device)
+            self.criterion_emb=torch.nn.CosineSimilarity(dim=2,eps=1e-8).to(device)
+
+        elif self.losstype=="stft+emb+rev":
+            self.criterion_audio=MultiResolutionSTFTLoss().to(device)
+            self.criterion_emb=torch.nn.CosineSimilarity(dim=2,eps=1e-8).to(device)
+
+    def forward(self, data, model_waveunet, model_reverbenc, device):
+        # get datapoint
+        sContent_in = data[0].to(device)
+        sStyle_in=data[1].to(device)
+        sTarget=data[2].to(device)
+        sAnecho=data[3].to(device)
+        # forward pass - get prediction of the ir
+        embTarget=model_reverbenc(sStyle_in)
+        sPrediction=model_waveunet(sContent_in,embTarget)
+
+        if self.losstype=="stft":
+            L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
+            L= L_sc+ L_mag 
+
+        elif self.losstype=="stft+rev":
+            L_sc_rev, L_mag_rev = self.criterion_audio(sTarget.squeeze(1)-sAnecho.squeeze(1), sPrediction.squeeze(1)-sAnecho.squeeze(1))
+            L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
+            L= L_sc_rev + L_mag_rev + L_sc + L_mag 
+
+        elif self.losstype=="stft+emb":
+            # get the embedding of the prediction
+            embPrediction=model_reverbenc(sPrediction)
+            criterion_audio=MultiResolutionSTFTLoss()
+            criterion_emb=torch.nn.CosineSimilarity(dim=2,eps=1e-8)
+            L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
+            L_emb=(1-((torch.mean(self.criterion_emb(embTarget,embPrediction))+ 1) / 2))
+            L=L_sc + L_mag + L_emb
+
+        elif self.losstype=="stft+emb+rev":
+            # get the embedding of the prediction
+            embPrediction=model_reverbenc(sPrediction)
+            criterion_audio=MultiResolutionSTFTLoss()
+            criterion_emb=torch.nn.CosineSimilarity(dim=2,eps=1e-8)
+            L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
+            L_sc_rev, L_mag_rev = self.criterion_audio(sTarget.squeeze(1)-sAnecho.squeeze(1), sPrediction.squeeze(1)-sAnecho.squeeze(1))
+            L_emb=(1-((torch.mean(self.criterion_emb(embTarget,embPrediction))+ 1) / 2))
+            L=L_sc_rev + L_mag_rev + L_sc + L_mag + L_emb
+
+        return L
     
+
 if __name__ == "__main__":
+
     # ---- check if loss definition is correct: ----
     model = MultiResolutionSTFTLoss()
     x = torch.randn(2, 16000)
@@ -177,3 +240,4 @@ if __name__ == "__main__":
 
     loss = model(x, y)
     print(loss)
+

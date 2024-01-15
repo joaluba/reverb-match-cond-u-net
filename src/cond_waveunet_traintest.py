@@ -2,7 +2,7 @@ import torch
 from tqdm import tqdm
 from datetime import datetime
 import time
-import sys
+import os
 from torch.utils.tensorboard import SummaryWriter
 # my modules
 import cond_waveunet_dataset
@@ -25,22 +25,28 @@ def infer(model_reverbenc, model_waveunet, data, device):
         return sContent_in, sStyle_in, sTarget_gt, sTarget_prediction
     
     
-def infer_and_compute_loss(model_reverbenc, model_waveunet, emb_criterion, audio_criterion, data,device):
+def infer_and_compute_loss(model_reverbenc, model_waveunet, emb_criterion, audio_criterion, reverb_criterion, data,device):
     # Function to infer target and compute loss - same for training, testing and validation
     # -------------------------------------------------------------------------------------
     # get datapoint
     sContent_in = data[0].to(device)
     sStyle_in=data[1].to(device)
     sTarget_gt=data[2].to(device)
+    sAnecho=data[3].to(device)
     # forward pass - get prediction of the ir
     embedding_gt=model_reverbenc(sStyle_in)
     sTarget_prediction=model_waveunet(sContent_in,embedding_gt)
-    # loss
+    # compute embedding of the predicted waveform 
     embedding_prediction=model_reverbenc(sTarget_prediction)
+    # loss based on full audio signal
     L_sc, L_mag = audio_criterion(sTarget_gt.squeeze(1), sTarget_prediction.squeeze(1))
-    L_emb=-torch.mean(emb_criterion(embedding_gt,embedding_prediction))
+    # loss based on reverb tail
+    L_sc_rev, L_mag_rev = reverb_criterion(sTarget_gt.squeeze(1)-sAnecho.squeeze(1), sTarget_prediction.squeeze(1)-sAnecho.squeeze(1))
+    # loss based on reverb tail
+    L_emb=(1-((torch.mean(emb_criterion(embedding_gt,embedding_prediction))+ 1) / 2))
+
     # loss 
-    loss=L_sc + L_mag +  L_emb
+    loss=L_sc + L_mag + L_sc_rev + L_mag_rev + L_emb
     return loss
 
 
@@ -48,29 +54,22 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
 
     # training parameters
     device = args.device
-    if args.audio_criterion=="multi_stft_loss":
-        audio_criterion = cond_waveunet_loss.MultiResolutionSTFTLoss()
-    if args.emb_criterion=="cosine_similarity":
-        emb_criterion = torch.nn.CosineSimilarity(dim=2,eps=1e-8)
+    criterion=cond_waveunet_loss.LossOfChoice(args)
+
     if args.optimizer=="adam":
         optimizer_waveunet =  torch.optim.AdamW(model_waveunet.parameters(), args.learn_rate)
         optimizer_reverbenc =  torch.optim.AdamW(model_reverbenc.parameters(), args.learn_rate)
+
     num_epochs = args.num_epochs
     savedir = args.savedir
     store_outputs = args.store_outputs
 
     # initialize tensorboard writer 
-    writer=SummaryWriter(args.savedir) 
+    writer=SummaryWriter(savedir) 
     # save training parameters
     if (store_outputs):
-        torch.save(args, savedir+'trainargs.pt')  
+        torch.save(args, os.path.join(savedir,'trainargs.pt'))
 
-    
-    # move components to device
-    audio_criterion=audio_criterion.to(device)
-    emb_criterion=emb_criterion.to(device)
-    model_reverbenc=model_reverbenc.to(device)
-    model_waveunet=model_waveunet.to(device)
 
     # allocate variable to track loss evolution 
     loss_evol=[]
@@ -90,9 +89,9 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
             # # measure data loading time (how much time of the training loop is spent on waiting on the next batch)
             # # - should be zero if the data loading is not a bottleneck
             # print(f"Time to load data: {time.time() - end}")     
-            
+
             # infer and compute loss
-            loss=infer_and_compute_loss(model_reverbenc, model_waveunet, emb_criterion, audio_criterion, data,device)
+            loss=criterion(data, model_waveunet, model_reverbenc, device)
             # empty gradient
             optimizer_waveunet.zero_grad()
             optimizer_reverbenc.zero_grad()
@@ -124,8 +123,9 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
         with torch.no_grad():
             val_loss=0
             for j,data in tqdm(enumerate(valloader),total = len(valloader)):
-                 # infer and compute loss
-                loss=infer_and_compute_loss(model_reverbenc, model_waveunet, emb_criterion, audio_criterion, data,device) 
+                            
+                # infer and compute loss
+                loss=criterion(data, model_waveunet, model_reverbenc, device)
                 # compute loss for the current batch
                 val_loss += loss.item()
 
@@ -149,19 +149,33 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
                         'optimizer_waveunet_state_dict': optimizer_waveunet.state_dict(),
                         'optimizer_reverbenc_state_dict': optimizer_reverbenc.state_dict(),
                         'loss': loss_evol,
-                        }, savedir+'checkpoint' +str(epoch)+'.pt')
+                        }, os.path.join(savedir,'checkpoint' +str(epoch)+'.pt'))
             
         # Early stopping: stop when validation loss doesnt improve for 10 epochs
         if avg_val_loss < best_val_loss:
+            # save the best condition so far 
+            if (store_outputs):
+                torch.save({
+                    'epoch': epoch,
+                    'model_waveunet_state_dict': model_waveunet.state_dict(),
+                    'model_reverbenc_state_dict': model_reverbenc.state_dict(),
+                    'optimizer_waveunet_state_dict': optimizer_waveunet.state_dict(),
+                    'optimizer_reverbenc_state_dict': optimizer_reverbenc.state_dict(),
+                    'loss': loss_evol,
+                    }, os.path.join(savedir,'checkpoint_best.pt'))
+
             best_val_loss = avg_val_loss
             counter = 0
         else:
             counter += 1
             print(f'Loss did not decrease x{counter}.')
 
-        if counter >= 14:
+        if counter >= 15:
             print(f'Early stopping after {counter +1} epochs without improvement.')
             break
+        
+
+            
   
     end=time.time()
     print(f"Finished training after: {(end-start)} seconds")
@@ -175,7 +189,7 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
         test_loss=0
         for j,data in tqdm(enumerate(testloader),total = len(testloader)):
             # infer and compute loss
-            loss=infer_and_compute_loss(model_reverbenc, model_waveunet, emb_criterion, audio_criterion, data,device)
+            loss=criterion(data, model_waveunet, model_reverbenc, device)
             # compute loss for the current batch
             test_loss += loss.item()
 
@@ -194,7 +208,6 @@ if __name__ == "__main__":
     # ---- test training loop ----
 
     args = Options().parse()
-    args.batch_size=24
 
     # ---- MODEL: ----
     # load reverb encoder
