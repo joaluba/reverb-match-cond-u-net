@@ -64,7 +64,7 @@ if __name__ == "__main__":
     args = Options().parse()
 
     # Conditions of the experiment
-    cond_trasf_type = ["many-to-many"]
+    cond_trasf_type = ["one-to-many", "many-to-many"]
     cond_losses=["stft","stft+rev","stft+emb","stft+rev+emb"]
 
     # Conditions combinations list
@@ -88,6 +88,7 @@ if __name__ == "__main__":
         if transf_type=="one-to-many":
             args.content_rir="anechoic"
             args.style_rir=None
+            # best params for one-to-many
             args.learn_rate = 1e-4
             args.batch_size = 8
         elif transf_type=="many-to-many":
@@ -96,6 +97,8 @@ if __name__ == "__main__":
             # best params for many-to-many
             args.learn_rate = 1e-4
             args.batch_size = 24
+
+        args.losstype=loss
 
         # create training tag based on date and params
         date_tag = datetime.now().strftime("%d-%m-%Y--%H-%M")

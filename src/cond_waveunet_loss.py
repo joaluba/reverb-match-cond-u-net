@@ -186,9 +186,12 @@ class LossOfChoice(torch.nn.Module):
             self.criterion_audio=MultiResolutionSTFTLoss().to(device)
             self.criterion_emb=torch.nn.CosineSimilarity(dim=2,eps=1e-8).to(device)
 
-        elif self.losstype=="stft+emb+rev":
+        elif self.losstype=="stft+rev+emb":
             self.criterion_audio=MultiResolutionSTFTLoss().to(device)
             self.criterion_emb=torch.nn.CosineSimilarity(dim=2,eps=1e-8).to(device)
+
+        else:
+            print("this loss is not implemented")
 
     def forward(self, data, model_waveunet, model_reverbenc, device):
         # get datapoint
@@ -212,21 +215,20 @@ class LossOfChoice(torch.nn.Module):
         elif self.losstype=="stft+emb":
             # get the embedding of the prediction
             embPrediction=model_reverbenc(sPrediction)
-            criterion_audio=MultiResolutionSTFTLoss()
-            criterion_emb=torch.nn.CosineSimilarity(dim=2,eps=1e-8)
             L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
             L_emb=(1-((torch.mean(self.criterion_emb(embTarget,embPrediction))+ 1) / 2))
             L=L_sc + L_mag + L_emb
 
-        elif self.losstype=="stft+emb+rev":
+        elif self.losstype=="stft+rev+emb":
             # get the embedding of the prediction
             embPrediction=model_reverbenc(sPrediction)
-            criterion_audio=MultiResolutionSTFTLoss()
-            criterion_emb=torch.nn.CosineSimilarity(dim=2,eps=1e-8)
             L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
             L_sc_rev, L_mag_rev = self.criterion_audio(sTarget.squeeze(1)-sAnecho.squeeze(1), sPrediction.squeeze(1)-sAnecho.squeeze(1))
             L_emb=(1-((torch.mean(self.criterion_emb(embTarget,embPrediction))+ 1) / 2))
             L=L_sc_rev + L_mag_rev + L_sc + L_mag + L_emb
+
+        else:
+            print("this loss is not implemented")
 
         return L
     

@@ -55,6 +55,7 @@ def train_and_test(model_reverbenc, model_waveunet, trainloader, valloader, test
     # training parameters
     device = args.device
     criterion=cond_waveunet_loss.LossOfChoice(args)
+    print(criterion)
 
     if args.optimizer=="adam":
         optimizer_waveunet =  torch.optim.AdamW(model_waveunet.parameters(), args.learn_rate)

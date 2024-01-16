@@ -60,7 +60,7 @@ def get_nonsilent_frame(audio,L_win_samples):
         chosen_frame=sig_out
     else:
         E_rms=10*torch.log10(torch.sqrt(torch.mean(torch.square(audio))))
-        E_thresh=E_rms-10
+        E_thresh=E_rms-5
         E_frame=-100
         tries=0
         while E_frame<E_thresh:
