@@ -43,6 +43,7 @@ class Options():
         parser.add_argument('--content_rir', default=None, type=str)
         parser.add_argument('--df_metadata', 
                             default="/home/ubuntu/joanna/reverb-match-cond-u-net/notebooks/nonoise2_data_set.csv" , type=str)
+
         # training arguments
         parser.add_argument('--num_epochs', default=100, type=int)
         parser.add_argument('--checkpoint_step', default=20, type=int)

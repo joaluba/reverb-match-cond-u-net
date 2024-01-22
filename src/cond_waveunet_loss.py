@@ -176,10 +176,7 @@ class LossOfChoice(torch.nn.Module):
         self.load_criterions(args.device)
 
     def load_criterions(self,device):
-        if self.losstype=="stft":
-            self.criterion_audio=MultiResolutionSTFTLoss().to(device)
-
-        elif self.losstype=="stft+rev":
+        if self.losstype=="stft" or self.losstype=="stft+rev" or self.losstype=="rev":
             self.criterion_audio=MultiResolutionSTFTLoss().to(device)
 
         elif self.losstype=="stft+emb":
@@ -200,12 +197,16 @@ class LossOfChoice(torch.nn.Module):
         sTarget=data[2].to(device)
         sAnecho=data[3].to(device)
         # forward pass - get prediction of the ir
-        embTarget=model_reverbenc(sStyle_in)
-        sPrediction=model_waveunet(sContent_in,embTarget)
+        embStyle=model_reverbenc(sStyle_in)
+        sPrediction=model_waveunet(sContent_in,embStyle)
 
         if self.losstype=="stft":
             L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
             L= L_sc+ L_mag 
+
+        if self.losstype=="rev":
+            L_sc_rev, L_mag_rev = self.criterion_audio(sTarget.squeeze(1)-sAnecho.squeeze(1), sPrediction.squeeze(1)-sAnecho.squeeze(1))
+            L= L_sc_rev + L_mag_rev 
 
         elif self.losstype=="stft+rev":
             L_sc_rev, L_mag_rev = self.criterion_audio(sTarget.squeeze(1)-sAnecho.squeeze(1), sPrediction.squeeze(1)-sAnecho.squeeze(1))
@@ -214,17 +215,17 @@ class LossOfChoice(torch.nn.Module):
 
         elif self.losstype=="stft+emb":
             # get the embedding of the prediction
-            embPrediction=model_reverbenc(sPrediction)
+            embTarget=model_reverbenc(sTarget)
             L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
-            L_emb=(1-((torch.mean(self.criterion_emb(embTarget,embPrediction))+ 1) / 2))
+            L_emb=(1-((torch.mean(self.criterion_emb(embStyle,embTarget))+ 1) / 2))
             L=L_sc + L_mag + L_emb
 
         elif self.losstype=="stft+rev+emb":
             # get the embedding of the prediction
-            embPrediction=model_reverbenc(sPrediction)
+            embTarget=model_reverbenc(sTarget)
             L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
             L_sc_rev, L_mag_rev = self.criterion_audio(sTarget.squeeze(1)-sAnecho.squeeze(1), sPrediction.squeeze(1)-sAnecho.squeeze(1))
-            L_emb=(1-((torch.mean(self.criterion_emb(embTarget,embPrediction))+ 1) / 2))
+            L_emb=(1-((torch.mean(self.criterion_emb(embStyle,embTarget))+ 1) / 2))
             L=L_sc_rev + L_mag_rev + L_sc + L_mag + L_emb
 
         else:

@@ -87,8 +87,20 @@ class DatasetReverbTransfer(Dataset):
         sContent_in=hlp.torch_standardize_max_abs(sContent_noisyrev)
         sStyle_in=hlp.torch_standardize_max_abs(sStylen_noisyrev)
         sTarget_out=hlp.torch_standardize_max_abs(sTarget_rev)
+        sContent=hlp.torch_standardize_max_abs(sContent)
 
         return sContent_in, sStyle_in, sTarget_out, sContent
+    
+    def get_idx_with_rt60diff(self,diff_rt60): 
+        # create column diff_rt60 to compute difference in rt60 between content and style audio
+        self.df_ds["diff_rt60"] = self.df_ds["rt60_true"].diff()
+        self.df_ds["diff_rt60"][0::2]=self.df_ds["diff_rt60"][1::2]
+        # # check indices of datapoint where the rt60 for content is lower than rt60 for style
+        selected=self.df_ds[self.df_ds["diff_rt60"]>diff_rt60]
+        selected=selected.iloc[::2]
+        selected=selected["pair_idx"].tolist()
+        return selected
+
     
     def get_info(self,index,style=True):
 

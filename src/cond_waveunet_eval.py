@@ -93,8 +93,6 @@ def add_styleloss_metrics_batch(input_batch,target_batch,prediction_batch,sr,cri
     scores_prediction=criterion(prediction_batch, target_batch)
     scores["styleloss_predict"].append(float(scores_prediction[0].cpu().numpy()))
 
-
-
 def infer(model_reverbenc, model_waveunet, data, device):
     # Function to infer target audio
     # ------------------------------
@@ -154,7 +152,7 @@ if __name__ == "__main__":
 
     from torch.utils.data import Subset
 
-    resultsdir="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-12-01-2024/"
+    resultsdir="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/"
 
     scores_all_models = pd.DataFrame({'label': [],
                 'nb_pesq_input': [], 'pesq_input': [], 'stoi_input': [],  'stftloss_input': [],
@@ -162,6 +160,7 @@ if __name__ == "__main__":
     
     BATCH_SIZE_EVAL=24
 
+    evaluation_name='evaluation_metrics.csv'
 
     for i, subdir in enumerate(os.listdir(resultsdir)):
         subdir_path = os.path.join(resultsdir, subdir)
@@ -169,12 +168,12 @@ if __name__ == "__main__":
         if os.path.isdir(subdir_path):
             print(f"Processing trainig results: {subdir_path}")
             current_model_tag=subdir.split("_", 1)[-1]
-            # load params 
+            # load training params 
             args=torch.load(pjoin(subdir_path,"trainargs.pt"))
-            # load training results
-            # train_results=torch.load(pjoin(subdir_path,"checkpoint27.pt"),map_location=args.device)
+            # load results from one of all checkpoints in the directory
             for filename in os.listdir(subdir_path):
-                if filename.startswith("checkpoint"):
+                if filename.startswith("checkpoint") & filename.endswith("best.pt"): # only computing measures for the best checkpoint
+                # if filename.startswith("checkpoint"): # computing measures for all checkpoints
                     print(f"Processing checkpoint results: {filename}")
                     current_checkpoint_tag=current_model_tag+filename
                     train_results=torch.load(pjoin(subdir_path,filename),map_location=args.device)
@@ -191,19 +190,19 @@ if __name__ == "__main__":
                     # load test dataset
                     args.split="test"
                     testset=cond_waveunet_dataset.DatasetReverbTransfer(args)
-                    # pick only first 1000 data points from the test set
-                    subset_indices = range(1000)
-                    testset = Subset(testset, subset_indices)
+                    # pick specific indices from test set 
+                    # subset_indices = testset.get_idx_with_rt60diff(0.5)
+                    # testset = Subset(testset, subset_indices)
                     # create dataloader
                     testloader = torch.utils.data.DataLoader(testset, batch_size=BATCH_SIZE_EVAL, shuffle=False, num_workers=6)
                     scores_1_model = eval_speechmetrics(model_ReverbEncoder, model_waveunet, testloader, args)
                     scores_1_model["label"]=[current_checkpoint_tag]*len(testloader)
                     scores_all_models = pd.concat([scores_all_models, pd.DataFrame(scores_1_model)], ignore_index=True)
-                    scores_all_models.to_csv(resultsdir+'evaluation_metrics_evol.csv', index=False)
+                    scores_all_models.to_csv(resultsdir+evaluation_name, index=False)
                     print(f"Saved intermediate results")
 
 
-    scores_all_models.to_csv(resultsdir+'evaluation_metrics.csv', index=False)
+    scores_all_models.to_csv(resultsdir+evaluation_name, index=False)
     print(f"Saved final results")
 
 
