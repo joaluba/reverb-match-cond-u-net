@@ -60,7 +60,44 @@ class Options():
         if not self.initialized:
             self.initialize()
         self.opt = self.parser.parse_args()
-        self.opt.df_ds=pd.read_csv(self.opt.df_metadata,index_col=0)
+        torch.manual_seed(0)
+        np.random.seed(0)
+        args = vars(self.opt)
+        print('| options')
+        for k, v in args.items():
+            print('%s: %s' % (str(k), str(v)))
+        print()
+        return self.opt
+
+
+class OptionsEval():
+
+    def __init__(self):
+        self.parser = argparse.ArgumentParser()
+        self.initialized = False
+
+    def initialize(self):
+        
+        parser = self.parser
+
+        # training arguments
+        parser.add_argument('--batch_size_eval', default=100, type=int)
+        parser.add_argument('--checkpoint_development', default=False, type=bool)
+        parser.add_argument('--eval_file_name', default="evaluation_metrics.csv", type=str)
+        parser.add_argument('--eval_dir', default="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/", type=str)
+        parser.add_argument('--eval_split', default="test", type=str)
+        parser.add_argument('--train_results_file', 
+                            default="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/18-01-2024--00-56_many-to-many_stft/checkpoint_best.pt", type=str)
+        parser.add_argument('--eval_tag', default="18-01-2024--00-56_many-to-many_stft", type=str)
+        parser.add_argument('--train_args_file', 
+                    default="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/18-01-2024--00-56_many-to-many_stft/trainargs.pt", type=str)
+        parser.add_argument('--savedir', default="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/", type=str)
+
+    def parse(self):
+        # initialize parser
+        if not self.initialized:
+            self.initialize()
+        self.opt = self.parser.parse_args()
         torch.manual_seed(0)
         np.random.seed(0)
         args = vars(self.opt)

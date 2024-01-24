@@ -13,8 +13,8 @@ import scipy.signal as signal
 class DatasetReverbTransfer(Dataset):
 
     def __init__(self,args):
-
-        self.df_ds = args.df_ds[args.df_ds["split"]==args.split] # pd data frame with metadata 
+        self.df_ds=pd.read_csv(args.df_metadata,index_col=0) # pd data frame with metadata 
+        self.df_ds = self.df_ds[self.df_ds["split"]==args.split] 
         # Create a custom index with consecutive pairs
         # (a datapoint will constist of a mixture of two signals)
         custom_index = np.repeat(np.arange(len(self.df_ds)//2), 2)
@@ -91,13 +91,14 @@ class DatasetReverbTransfer(Dataset):
 
         return sContent_in, sStyle_in, sTarget_out, sContent
     
-    def get_idx_with_rt60diff(self,diff_rt60): 
+    def get_idx_with_rt60diff(self,diff_rt60_min,diff_rt60_max): 
         # create column diff_rt60 to compute difference in rt60 between content and style audio
         self.df_ds["diff_rt60"] = self.df_ds["rt60_true"].diff()
         self.df_ds["diff_rt60"][0::2]=self.df_ds["diff_rt60"][1::2]
         # # check indices of datapoint where the rt60 for content is lower than rt60 for style
-        selected=self.df_ds[self.df_ds["diff_rt60"]>diff_rt60]
+        selected=self.df_ds[(self.df_ds["diff_rt60"]>diff_rt60_min) & (self.df_ds["diff_rt60"]<diff_rt60_max)]
         selected=selected.iloc[::2]
+        print(selected)
         selected=selected["pair_idx"].tolist()
         return selected
 
