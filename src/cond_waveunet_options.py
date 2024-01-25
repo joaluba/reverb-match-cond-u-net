@@ -81,11 +81,14 @@ class OptionsEval():
         parser = self.parser
 
         # training arguments
-        parser.add_argument('--batch_size_eval', default=100, type=int)
+        parser.add_argument('--device', default="cuda", type=str)
+        parser.add_argument('--batch_size_eval', default=16, type=int)
         parser.add_argument('--checkpoint_development', default=False, type=bool)
         parser.add_argument('--eval_file_name', default="evaluation_metrics.csv", type=str)
         parser.add_argument('--eval_dir', default="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/", type=str)
         parser.add_argument('--eval_split', default="test", type=str)
+        parser.add_argument('--rt60diffmin', default=-2, type=float)
+        parser.add_argument('--rt60diffmax', default=2, type=float)
         parser.add_argument('--train_results_file', 
                             default="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/18-01-2024--00-56_many-to-many_stft/checkpoint_best.pt", type=str)
         parser.add_argument('--eval_tag', default="18-01-2024--00-56_many-to-many_stft", type=str)
