@@ -162,7 +162,7 @@ class Trainer(torch.nn.Module):
 
             if counter >= 30:
                 print(f'Early stopping after {counter +1} epochs without improvement.')
-                break
+                # break
             
         end=time.time()
         print(f"Finished training after: {(end-start)} seconds")
