@@ -45,8 +45,8 @@ if __name__ == "__main__":
     args = Options().parse()
 
     # Conditions of the experiment
-    cond_trasf_type = ["many-to-many"]
-    cond_losses=["rev","stft+emb","stft+rev+emb"]
+    cond_trasf_type = ["one-to-many","many-to-many"]
+    cond_losses=["stft"]
 
     # Conditions combinations list
     from itertools import product

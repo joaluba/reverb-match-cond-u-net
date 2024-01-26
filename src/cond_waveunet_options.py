@@ -45,7 +45,7 @@ class Options():
                             default="/home/ubuntu/joanna/reverb-match-cond-u-net/notebooks/nonoise2_data_set.csv" , type=str)
 
         # training arguments
-        parser.add_argument('--num_epochs', default=100, type=int)
+        parser.add_argument('--num_epochs', default=300, type=int)
         parser.add_argument('--checkpoint_step', default=20, type=int)
         parser.add_argument('--batch_size', default=8, type=int)
         parser.add_argument('--learn_rate', default=1e-4, type=float)
