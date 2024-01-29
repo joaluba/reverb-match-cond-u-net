@@ -204,7 +204,7 @@ class LossOfChoice(torch.nn.Module):
             L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
             L= L_sc+ L_mag 
 
-        if self.losstype=="rev":
+        elif self.losstype=="rev":
             L_sc_rev, L_mag_rev = self.criterion_audio(sTarget.squeeze(1)-sAnecho.squeeze(1), sPrediction.squeeze(1)-sAnecho.squeeze(1))
             L= L_sc_rev + L_mag_rev 
 
