@@ -72,13 +72,13 @@ class Trainer(torch.nn.Module):
                     'optimizer_reverbenc_state_dict': self.optimizer_reverbenc.state_dict(),
                     'loss': loss_evol,
                     }, os.path.join(self.args.savedir,'checkpoint' +name+'.pt'))
-
+    
     def train(self):
 
         # initialize tensorboard writer 
         writer=SummaryWriter(self.args.savedir) 
         # save training parameters
-        if (self.args.store_outputs):
+        if (bool(self.args.store_outputs)):
             torch.save(self.args, os.path.join(self.args.savedir,'trainargs.pt'))
 
         # allocate variable to track loss evolution 
@@ -101,7 +101,15 @@ class Trainer(torch.nn.Module):
                 # print(f"Time to load data: {time.time() - end}")     
 
                 # infer and compute loss
-                loss=self.criterion(data, self.model_waveunet, self.model_reverbenc, self.args.device)
+                loss_vals,loss_names=self.criterion(data, self.model_waveunet, self.model_reverbenc, self.args.device)
+                # log and sum all loss terms
+                loss=0
+                for i in range(0,len(loss_vals)):
+                    loss_term=self.args.loss_alphas[i]*loss_vals[i]
+                    loss+=loss_term
+                    writer.add_scalar(loss_names[i], loss_term.item(), epoch * len(self.trainloader) + j) # tensorboard
+                    
+
                 # empty gradient
                 self.optimizer_waveunet.zero_grad()
                 self.optimizer_reverbenc.zero_grad()
@@ -114,7 +122,7 @@ class Trainer(torch.nn.Module):
                 train_loss += loss.item()
 
                 # log variables and audios to tensorboard:
-                writer.add_scalar('TrainLossPerBatch', loss.item()/self.args.batch_size, epoch * len(self.trainloader) + j) # tensorboard
+                writer.add_scalar('TrainLossPerBatch', loss.item(), epoch * len(self.trainloader) + j) # tensorboard
                 if j==0:
                     self.logaudio_tboard(data,writer)# tensorboard
 
@@ -130,9 +138,16 @@ class Trainer(torch.nn.Module):
                 for j,data in tqdm(enumerate(self.valloader),total = len(self.valloader)):
                                 
                     # infer and compute loss
-                    loss=self.criterion(data, self.model_waveunet, self.model_reverbenc, self.args.device)
+                    loss_vals,loss_names==self.criterion(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
+                    # log and sum all loss terms
+                    loss=0
+                    for i in range(0,len(loss_vals)):
+                        loss_term=self.args.loss_alphas[i]*loss_vals[i]
+                        loss+=loss_term
+                        writer.add_scalar(loss_names[i], loss_term.item(), epoch * len(self.trainloader) + j) # tensorboard
+
                     # compute loss for the current batch
-                    val_loss += loss.item()
+                    val_loss += loss.item()  
 
             # Print stats at the end of the epoch
             num_samples_train=len(self.trainloader.sampler)
@@ -146,13 +161,13 @@ class Trainer(torch.nn.Module):
             writer.add_scalar('ValLoss', avg_val_loss, epoch) # tensorboard
             
             # Save checkpoint (overwrite)
-            if (self.args.store_outputs) & (epoch % self.args.checkpoint_step ==0):
+            if (bool(self.args.store_outputs)) & (epoch % self.args.checkpoint_step ==0):
                 self.save_checkpoint(epoch,loss_evol,str(epoch))
                 
             # Early stopping: stop when validation loss doesnt improve for 30 epochs
             if avg_val_loss < best_val_loss:
                 # save the best checkpoint so far 
-                if (self.args.store_outputs):
+                if (bool(self.args.store_outputs)):
                     self.save_checkpoint(epoch,loss_evol,"best")
                 best_val_loss = avg_val_loss
                 counter = 0

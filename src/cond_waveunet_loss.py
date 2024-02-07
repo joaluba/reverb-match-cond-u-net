@@ -202,36 +202,52 @@ class LossOfChoice(torch.nn.Module):
 
         if self.losstype=="stft":
             L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
-            L= L_sc+ L_mag 
+            L_stft= L_sc+ L_mag 
+            L=[L_stft]
+            L_names=["L_stft"]
 
         elif self.losstype=="rev":
             L_sc_rev, L_mag_rev = self.criterion_audio(sTarget.squeeze(1)-sAnecho.squeeze(1), sPrediction.squeeze(1)-sAnecho.squeeze(1))
-            L= L_sc_rev + L_mag_rev 
+            L_rev= L_sc_rev + L_mag_rev 
+            L=[L_rev]
+            L_names=["L_rev"]
 
         elif self.losstype=="stft+rev":
             L_sc_rev, L_mag_rev = self.criterion_audio(sTarget.squeeze(1)-sAnecho.squeeze(1), sPrediction.squeeze(1)-sAnecho.squeeze(1))
             L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
-            L= L_sc_rev + L_mag_rev + L_sc + L_mag 
+            L_stft=L_sc+L_mag
+            L_rev=L_sc_rev+L_mag_rev
+            L= [L_stft,L_rev]
+            L_names=["L_stft", "L_rev"]
 
         elif self.losstype=="stft+emb":
             # get the embedding of the prediction
             embTarget=model_reverbenc(sTarget)
             L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
+            L_stft=L_sc + L_mag
             L_emb=(1-((torch.mean(self.criterion_emb(embStyle,embTarget))+ 1) / 2))
-            L=L_sc + L_mag + L_emb
+            L=[L_stft, L_emb]
+            L_names=["L_stft", "L_emb"]
 
         elif self.losstype=="stft+rev+emb":
             # get the embedding of the prediction
             embTarget=model_reverbenc(sTarget)
             L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
             L_sc_rev, L_mag_rev = self.criterion_audio(sTarget.squeeze(1)-sAnecho.squeeze(1), sPrediction.squeeze(1)-sAnecho.squeeze(1))
+            L_stft=L_sc+L_mag
+            L_rev=L_sc_rev+L_mag_rev
             L_emb=(1-((torch.mean(self.criterion_emb(embStyle,embTarget))+ 1) / 2))
-            L=L_sc_rev + L_mag_rev + L_sc + L_mag + L_emb
+            L = [L_stft, L_rev, L_emb]
+            L_names=["L_stft", "L_rev", "L_emb"]
+            # Append the losses to the text file
+            with open("losses.txt", 'a') as file:
+                file.write(f"{L_stft} {L_rev} {L_emb}\n")
+
 
         else:
             print("this loss is not implemented")
 
-        return L
+        return L,L_names
     
 
 if __name__ == "__main__":

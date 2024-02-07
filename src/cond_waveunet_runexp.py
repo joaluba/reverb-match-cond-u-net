@@ -44,9 +44,11 @@ if __name__ == "__main__":
     # load default arguments
     args = Options().parse()
 
+    args.epochs=10
+
     # Conditions of the experiment
-    cond_trasf_type = ["one-to-many","many-to-many"]
-    cond_losses=["stft"]
+    cond_trasf_type = ["many-to-many"]
+    cond_losses=["stft+rev+emb"]
 
     # Conditions combinations list
     from itertools import product
@@ -88,9 +90,10 @@ if __name__ == "__main__":
             args.style_rir=None
             # best params for many-to-many
             args.learn_rate = 1e-4
-            args.batch_size = 24
+            args.batch_size = 8
 
         args.losstype=loss
+        args.loss_alphas=[1,3,10]
 
         # create training tag based on date and params
         date_tag = datetime.now().strftime("%d-%m-%Y--%H-%M")

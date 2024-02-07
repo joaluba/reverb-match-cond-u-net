@@ -24,6 +24,8 @@ class Evaluator(torch.nn.Module):
         super().__init__()
         self.args_test=args_test
         self.args_train=torch.load(self.args_test.train_args_file)
+        # if we are on dacom we need to change the path of the dataset metadata (so far only this data was used)
+        self.args_train.df_metadata="/home/Imatge/projects/reverb-match-cond-u-net/dataset-metadata/nonoise2_dacom.csv"
         self.load_eval_objects()
         self.scores = {'label': [],
                 'nb_pesq_input': [], 'pesq_input': [], 'stoi_input': [],  'stftloss_input': [],
@@ -174,7 +176,9 @@ def eval_directory(args_test):
     for subdir in os.listdir(args_test.eval_dir):
         subdir_path = os.path.join(args_test.eval_dir, subdir)
         # Check if it's a directory
-        if os.path.isdir(subdir_path) & (subdir_path.find("many-to-many") != -1):
+        # if os.path.isdir(subdir_path) & (subdir_path.find("many-to-many") != -1):
+        if os.path.isdir(subdir_path):
+
             print(f"Processing trainig results: {subdir_path}")
 
              # load results from checkpoints in the directory
@@ -184,7 +188,7 @@ def eval_directory(args_test):
                     # specify training params file
                     args_test.train_args_file=pjoin(subdir_path,"trainargs.pt")
                     # load checkpoint file
-                    args_test.train_results_file=pjoin(subdir_path,filename) 
+                    args_test.train_results_file=pjoin(subdir_path,filename)
                     # create tag for this evalauation
                     args_test.eval_tag=args_test.train_results_file.split('/')[-2]
                     # create evaluator object
@@ -202,17 +206,8 @@ def eval_directory(args_test):
 if __name__ == "__main__":
 
     args_test=OptionsEval().parse()
-    args_test.eval_dir="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/"
 
-    # Compute for all
-    args_test.rt60diffmin=-10
-    args_test.rt60diffmax=10
-    args_test.eval_file_name="eval_all.csv"
-
-    eval_directory(args_test)
-
-
-    args_test.eval_dir="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-22-01-2024/"
+    args_test.eval_dir="/media/ssd2/RESULTS-reverb-match-cond-u-net/runs-exp-26-01-2024/"
 
     # Compute for all
     args_test.rt60diffmin=-3
@@ -220,7 +215,6 @@ if __name__ == "__main__":
     args_test.eval_file_name="eval_all.csv"
 
     eval_directory(args_test)
-
 
     # Compute for difficult re-reverberation
     args_test.rt60diffmin=-2
