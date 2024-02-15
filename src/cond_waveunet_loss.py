@@ -123,9 +123,9 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
 
     def __init__(
         self,
-        fft_sizes=[64, 512, 2048,8192],
-        hop_sizes=[32, 256, 1024,4096],
-        win_lengths=[64, 512, 2048, 8192],
+        fft_sizes=[256, 512, 1024, 2048,4096],
+        hop_sizes=[64, 128, 256,512,1024],
+        win_lengths=[256, 512, 1024, 2048,4096],
         window="hann_window",
     ):
         """Initialize Multi resolution STFT loss module.
@@ -186,16 +186,21 @@ class LossOfChoice(torch.nn.Module):
         elif self.losstype=="stft+rev+emb":
             self.criterion_audio=MultiResolutionSTFTLoss().to(device)
             self.criterion_emb=torch.nn.CosineSimilarity(dim=2,eps=1e-8).to(device)
-
+        
+        elif self.losstype=="stft+rev+emb+trip":
+            self.criterion_audio=MultiResolutionSTFTLoss().to(device)
+            self.criterion_trip=torch.nn.TripletMarginLoss().to(device)
+            self.criterion_emb=torch.nn.CosineSimilarity(dim=2,eps=1e-8).to(device)
         else:
             print("this loss is not implemented")
 
     def forward(self, data, model_waveunet, model_reverbenc, device):
         # get datapoint
-        sContent_in = data[0].to(device)
-        sStyle_in=data[1].to(device)
-        sTarget=data[2].to(device)
-        sAnecho=data[3].to(device)
+        sContent_in = data[0].to(device) # s1r1
+        sStyle_in=data[1].to(device) # s2r2
+        sTarget=data[2].to(device) # s1r2
+        sAnecho=data[3].to(device) # s1
+        sPositive=data[4].to(device) # s2r1
         # forward pass - get prediction of the ir
         embStyle=model_reverbenc(sStyle_in)
         sPrediction=model_waveunet(sContent_in,embStyle)
@@ -242,6 +247,19 @@ class LossOfChoice(torch.nn.Module):
             # Append the losses to the text file
             with open("losses.txt", 'a') as file:
                 file.write(f"{L_stft} {L_rev} {L_emb}\n")
+        
+        elif self.losstype=="stft+rev+emb+trip":
+            # get the embedding of the prediction
+            embTarget=model_reverbenc(sTarget)
+            embPositive=model_reverbenc(sPositive)
+            L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
+            L_sc_rev, L_mag_rev = self.criterion_audio(sTarget.squeeze(1)-sAnecho.squeeze(1), sPrediction.squeeze(1)-sAnecho.squeeze(1))
+            L_stft=L_sc+L_mag
+            L_rev=L_sc_rev+L_mag_rev
+            L_emb=(1-((torch.mean(self.criterion_emb(embStyle,embTarget))+ 1) / 2))
+            L_trip=self.criterion_trip(embStyle,embPositive,embTarget)
+            L = [L_stft, L_rev, L_emb, L_trip]
+            L_names=["L_stft", "L_rev", "L_emb", "L_trip"]
 
 
         else:

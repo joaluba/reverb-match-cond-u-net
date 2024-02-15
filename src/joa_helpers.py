@@ -3,6 +3,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import torchaudio
+import librosa
+import scipy.signal as signal
+from masp import shoebox_room_sim as srs
+from os.path import join as pjoin
 
 def place_on_circle(head_pos,r,angle_deg):
 # place a source around the reference point (like head)
@@ -141,3 +145,82 @@ def torch_load_mono(filename,sr_target):
     return sig
 
 
+def plotspectrogram(y, sr, n_fft,hop_length,title):
+    # Compute STFT spectrogram
+    spectrogram = np.abs(librosa.stft(y, n_fft=n_fft, hop_length=hop_length))
+    # Plot the spectrogram
+    librosa.display.specshow(librosa.amplitude_to_db(spectrogram**2, ref=np.max), sr=sr, hop_length=hop_length, x_axis='time', y_axis='log', vmin=-80, vmax=0)
+    plt.title(title)
+
+
+def synch_sigs(sig1,sig2):
+    sig1_out=np.zeros(sig1.shape)
+    sig2_out=np.zeros(sig2.shape)
+    corr = signal.correlate(sig1, sig2, 'full')
+    lag = signal.correlation_lags(len(sig1), len(sig2), mode='full')[np.argmax(corr)]
+    if lag > 0:
+        sig2=sig2[0:-lag]
+        sig1=sig1[lag:]
+    elif lag < 0:
+        sig2=sig2[-lag:]
+        sig1=sig1[0:lag]
+
+    sig1_out[:sig1.shape[0]]=sig1
+    sig2_out[:sig2.shape[0]]=sig2
+    return sig1_out,sig2_out, lag
+
+
+def render_random_rir(room_x,room_y,room_z,rt60):
+    # generate random rir from a room specified by the 
+    # above 4 parameters
+    # -------------------------------------------------------
+    maxlim = 1.8 # Maximum reverberation time
+    band_centerfreqs=np.array([16000]) #change this for multiband
+    mic_specs = np.array([[0, 0, 0, 1]]) # omni-directional
+    fs_rir = 48000
+    # create random src-rec position in the room 
+    mic_pos, src_pos= random_srcrec_in_room(room_x,room_y,room_z)
+    # receiver position (mono mic): 
+    rec = np.array([[mic_pos[0], mic_pos[1], mic_pos[2]]])
+    # source position
+    src = np.array([[src_pos[0], src_pos[1], src_pos[2]]])
+    # room dimensions:
+    room = np.array([room_x, room_y, room_z])
+    # reverberation:
+    rt60 = np.array([rt60])
+    # Compute absorption coefficients for desired rt60 and room dimensions
+    abs_walls,rt60_true = srs.find_abs_coeffs_from_rt(room, rt60)
+    # Small correction for sound absorption coefficients:
+    if sum(rt60_true-rt60>0.05*rt60_true)>0:
+        abs_walls,rt60_true = srs.find_abs_coeffs_from_rt(room, rt60_true + abs(rt60-rt60_true))
+    # Generally, we simulate up to RT60:
+    limits = np.minimum(rt60, maxlim)
+    # Compute echogram:
+    abs_echogram= srs.compute_echograms_mic(room, src, rec, abs_walls, limits, mic_specs)
+    # Render RIR: 
+    mic_rir = srs.render_rirs_mic(abs_echogram, band_centerfreqs, fs_rir)
+    return mic_rir
+
+def random_srcrec_in_room(room_x,room_y,room_z):
+    # mic_position - position randomly placed inside the room:
+    mic_pos=[]
+    mic_pos.append(np.random.uniform(low = 0.35*room_x, high = 0.65*room_x))
+    mic_pos.append(np.random.uniform(low = 0.35*room_y, high = 0.65*room_y))
+    mic_pos.append(np.random.uniform(low = 1., high = 2.))
+    np.array(mic_pos)
+    # source position always the same in reference to mic (close-mic):
+    src_pos = place_on_circle(np.array([mic_pos[0],mic_pos[1],mic_pos[2]]),0.1,0)
+    return mic_pos,src_pos
+
+
+def deconvolve(reverberant,anechoic):
+    reverberant_spectrum = np.fft.fft(reverberant)
+    anechoic_spectrum = np.fft.fft(anechoic)
+
+    # Perform deconvolution
+    impulse_response_spectrum = np.divide(reverberant_spectrum, anechoic_spectrum)
+
+    # Inverse Fourier Transform
+    impulse_response = np.fft.ifft(impulse_response_spectrum)
+    
+    return impulse_response

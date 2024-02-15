@@ -49,16 +49,18 @@ if __name__ == "__main__":
     # Conditions of the experiment
     cond_trasf_type = ["many-to-many"]
     cond_losses=["stft+rev+emb"]
+    cond_alphas=[[1,2,10],[1,2,0],[1,5,10]]
 
     # Conditions combinations list
     from itertools import product
 
     # Generate all combinations
     cond_combinations = []
-    for combo in product(cond_trasf_type, cond_losses):
+    for combo in product(cond_trasf_type, cond_losses, cond_alphas):
         combination_dict = {
             'cond_trasf_type': combo[0],
-            'cond_losses': combo[1]
+            'cond_losses': combo[1],
+            'cond_alphas': combo[2]
         }
         cond_combinations.append(combination_dict)
 
@@ -78,6 +80,7 @@ if __name__ == "__main__":
         # prepare params for this combination
         loss=combination["cond_losses"]
         transf_type=combination["cond_trasf_type"]
+        alphas=combination["cond_alphas"]
 
         if transf_type=="one-to-many":
             args.content_rir="anechoic"
@@ -93,13 +96,14 @@ if __name__ == "__main__":
             args.batch_size = 8
 
         args.losstype=loss
-        args.loss_alphas=[1,3,10]
+        args.loss_alphas=alphas
 
         # create training tag based on date and params
         date_tag = datetime.now().strftime("%d-%m-%Y--%H-%M")
         loss_tag = "_"+ loss
         transf_tag="_"+ transf_type
-        tag=date_tag+transf_tag+loss_tag
+        alpha_tag="_"+ '_'.join(map(str, alphas))
+        tag=date_tag+transf_tag+loss_tag+alpha_tag
 
         # prepare diectory for this training combination
         args.savedir=os.path.join(runexp_savepath,tag) 

@@ -207,7 +207,7 @@ if __name__ == "__main__":
 
     args_test=OptionsEval().parse()
 
-    args_test.eval_dir="/media/ssd2/RESULTS-reverb-match-cond-u-net/runs-exp-26-01-2024/"
+    args_test.eval_dir="/media/ssd2/RESULTS-reverb-match-cond-u-net/runs-exp-09-02-2024/"
 
     # Compute for all
     args_test.rt60diffmin=-3

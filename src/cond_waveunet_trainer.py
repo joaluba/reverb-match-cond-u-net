@@ -123,6 +123,7 @@ class Trainer(torch.nn.Module):
 
                 # log variables and audios to tensorboard:
                 writer.add_scalar('TrainLossPerBatch', loss.item(), epoch * len(self.trainloader) + j) # tensorboard
+
                 if j==0:
                     self.logaudio_tboard(data,writer)# tensorboard
 
@@ -144,7 +145,7 @@ class Trainer(torch.nn.Module):
                     for i in range(0,len(loss_vals)):
                         loss_term=self.args.loss_alphas[i]*loss_vals[i]
                         loss+=loss_term
-                        writer.add_scalar(loss_names[i], loss_term.item(), epoch * len(self.trainloader) + j) # tensorboard
+                        writer.add_scalar("val_"+loss_names[i], loss_term.item(), epoch * len(self.valloader) + j) # tensorboard
 
                     # compute loss for the current batch
                     val_loss += loss.item()  
