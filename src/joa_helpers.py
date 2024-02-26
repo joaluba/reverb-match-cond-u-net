@@ -213,14 +213,23 @@ def random_srcrec_in_room(room_x,room_y,room_z):
     return mic_pos,src_pos
 
 
-def deconvolve(reverberant,anechoic):
-    reverberant_spectrum = np.fft.fft(reverberant)
-    anechoic_spectrum = np.fft.fft(anechoic)
-
-    # Perform deconvolution
-    impulse_response_spectrum = np.divide(reverberant_spectrum, anechoic_spectrum)
-
-    # Inverse Fourier Transform
-    impulse_response = np.fft.ifft(impulse_response_spectrum)
-    
-    return impulse_response
+def torch_deconv_W(reverberant_signal, room_impulse_response):
+    reverberant_signal=reverberant_signal.squeeze()
+    room_impulse_response=room_impulse_response.squeeze()
+    # Determine the longer of the two signals
+    max_length = max(len(reverberant_signal), len(room_impulse_response))
+    # Pad the signals to the same length
+    reverberant_signal_padded = torch.nn.functional.pad(reverberant_signal, (0, max_length - len(reverberant_signal)))
+    room_impulse_response_padded = torch.nn.functional.pad(room_impulse_response, (0, max_length - len(room_impulse_response)))
+    # Perform FFT on both signals
+    Y = torch.fft.fft(reverberant_signal_padded)
+    H = torch.fft.fft(room_impulse_response_padded)
+    # Compute wiener filter
+    wiener_filter = torch.conj(H) / (torch.abs(H)**2 + 1e-10)
+   # Apply Wiener filter
+    X = Y * wiener_filter
+    # Perform inverse FFT to obtain deconvolved signal
+    estimated_anechoic_signal = torch.fft.ifft(X)
+    # Take real part to get rid of imaginary part 
+    estimated_anechoic_signal = torch.real(estimated_anechoic_signal)
+    return estimated_anechoic_signal[:len(reverberant_signal)].unsqueeze(0).unsqueeze(0)

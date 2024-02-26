@@ -116,6 +116,31 @@ class DatasetReverbTransfer(Dataset):
 
         return df
 
+    def get_rirs(self,index):
+        # Pick pair of signals from metadata:
+        df_pair=self.df_ds[self.df_ds["pair_idx"]==index]
+        df_pair=df_pair.reset_index()
+
+        if self.content_ir is None:
+            r1 = hlp.torch_load_mono(df_pair["ir_file_path"][0],self.fs)
+            r1b=r1
+        elif self.content_ir=="anechoic":
+            r1 = torch.cat((torch.tensor([[1.0]]), torch.zeros((1,self.fs-1))),1)
+            r1b=r1
+        else: 
+            r1 = hlp.torch_load_mono(self.content_ir,self.fs)
+            r1b =hlp.render_random_rir(df_pair["room_x"],df_pair["room_y"],df_pair["room_z"],df_pair["rt60_set"])
+
+        if self.style_ir is None:
+            r2 = hlp.torch_load_mono(df_pair["ir_file_path"][1],self.fs)
+        else: 
+            r2 = hlp.torch_load_mono(self.style_ir,self.fs)
+        
+        return r1,r2,r1b
+
+            
+        
+
 
     def get_item_test(self,index):
                 # Pick pair of signals from metadata:
@@ -183,4 +208,4 @@ class DatasetReverbTransfer(Dataset):
         s1=hlp.torch_standardize_max_abs(s1) # Anechoic content sound
         s1r1b=hlp.torch_standardize_max_abs(s1r1b) # Reverberant signal from the same room as content (but different position)
 
-        return s1r1n1, s2r2n2, s1r2, s2r1, s1, s2, s1r1b
+        return s1r1n1, s2r2n2, s1r2, s1, s2r1, s2, s1r1b

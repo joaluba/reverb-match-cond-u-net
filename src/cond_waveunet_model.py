@@ -42,6 +42,7 @@ class ReverbEncoderBlock(nn.Module):
         # residual connection
         self.residual_conv = nn.Conv1d(in_channels, out_channels, kernel_size=1, stride=stride, padding=0)
         self.residual_bn = nn.BatchNorm1d(out_channels)
+    
 
     def forward(self, x):
         # residual connection
@@ -215,6 +216,7 @@ class waveunet(nn.Module):
             o = torch.cat([o, skipfeats[self.n_layers - i - 1]], dim=1)
             # decoder layer 
             o = self.decoder[i](o,z)
+            
 
         # concatenate output with input
         o = torch.cat([o, x], dim=1)

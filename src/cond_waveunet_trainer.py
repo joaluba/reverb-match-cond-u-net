@@ -41,6 +41,27 @@ class Trainer(torch.nn.Module):
         self.trainloader = torch.utils.data.DataLoader(self.trainset, batch_size=args.batch_size, shuffle=True, num_workers=6,pin_memory=True)
         self.valloader = torch.utils.data.DataLoader(self.valset, batch_size=args.batch_size, shuffle=True, num_workers=6,pin_memory=True)
 
+        # ---- PREPARE TRAINING LOOP (starting from scratch or resume training): ----
+        if args.resume_checkpoint==None:
+            print("Starting new training from scratch in : "+ args.savedir)
+            self.writer=SummaryWriter(args.savedir) 
+            self.loss_evol=[]
+            self.start_epoch=0
+            self.best_val_loss=float("inf")
+        else:
+            checkpoint_path=os.path.join(args.savedir,args.resume_checkpoint)
+            train_results=torch.load(checkpoint_path,map_location=args.device)
+            self.model_reverbenc.load_state_dict(train_results["model_reverbenc_state_dict"])           
+            self.model_waveunet.load_state_dict(train_results["model_waveunet_state_dict"])
+            self.optimizer_reverbenc.load_state_dict(train_results["optimizer_reverbenc_state_dict"])
+            self.optimizer_waveunet.load_state_dict(train_results["optimizer_waveunet_state_dict"])
+            self.writer=SummaryWriter(args.resume_tboard)
+            self.loss_evol = train_results['loss']
+            self.start_epoch = train_results['epoch']
+            self.best_val_loss=float("inf")
+            print("Resume training from epoch "+ str(self.start_epoch) + " from training "+ args.savedir)
+
+
     def infer(self,data):
         with torch.no_grad():
             # Function to infer target audio
@@ -54,12 +75,15 @@ class Trainer(torch.nn.Module):
             sTarget_prediction=self.model_waveunet(sContent_in,embedding_gt)
             return sContent_in, sStyle_in, sTarget_gt, sTarget_prediction
         
-    def logaudio_tboard(self,data,writer):
+    def logaudio_tboard(self,writer):
         with torch.no_grad():
-            _,_,sTarget_gt, sTarget_prediction=self.infer(data)
-            for i in range(5):
-                wave_target=sTarget_gt[i,:,:].squeeze(0)
-                wave_predict=sTarget_prediction[i,:,:].squeeze(0)
+            chosen_idx=[9372,49836,7247,9950,473]
+            for i in range(0,len(chosen_idx)):
+                data=self.trainset[chosen_idx[i]]
+                data = [data[i].unsqueeze(0) for i in range(len(data))]
+                _,_,sTarget_gt, sTarget_prediction=self.infer(data)
+                wave_target=sTarget_gt[0,:,:].squeeze(0)
+                wave_predict=sTarget_prediction[0,:,:].squeeze(0)
                 writer.add_audio(f'Target_dp{i}', wave_target/wave_target.abs().max(), torch.tensor(self.args.fs))
                 writer.add_audio(f'Predict_dp{i}', wave_predict/wave_predict.abs().max(), torch.tensor(self.args.fs))
 
@@ -72,22 +96,16 @@ class Trainer(torch.nn.Module):
                     'optimizer_reverbenc_state_dict': self.optimizer_reverbenc.state_dict(),
                     'loss': loss_evol,
                     }, os.path.join(self.args.savedir,'checkpoint' +name+'.pt'))
+        
     
     def train(self):
 
-        # initialize tensorboard writer 
-        writer=SummaryWriter(self.args.savedir) 
-        # save training parameters
         if (bool(self.args.store_outputs)):
             torch.save(self.args, os.path.join(self.args.savedir,'trainargs.pt'))
-
-        # allocate variable to track loss evolution 
-        loss_evol=[]
-        best_val_loss=float("inf")
         
         # ------------- TRAINING START: -------------
         start = time.time()
-        for epoch in range(self.args.num_epochs):
+        for epoch in range(self.start_epoch,self.args.num_epochs):
 
             # ----- Training loop for this epoch: -----
             self.model_waveunet.train()
@@ -107,7 +125,7 @@ class Trainer(torch.nn.Module):
                 for i in range(0,len(loss_vals)):
                     loss_term=self.args.loss_alphas[i]*loss_vals[i]
                     loss+=loss_term
-                    writer.add_scalar(loss_names[i], loss_term.item(), epoch * len(self.trainloader) + j) # tensorboard
+                    self.writer.add_scalar(loss_names[i], loss_term.item(), epoch * len(self.trainloader) + j) # tensorboard
                     
 
                 # empty gradient
@@ -122,10 +140,10 @@ class Trainer(torch.nn.Module):
                 train_loss += loss.item()
 
                 # log variables and audios to tensorboard:
-                writer.add_scalar('TrainLossPerBatch', loss.item(), epoch * len(self.trainloader) + j) # tensorboard
+                self.writer.add_scalar('TrainLossPerBatch', loss.item(), epoch * len(self.trainloader) + j) # tensorboard
 
                 if j==0:
-                    self.logaudio_tboard(data,writer)# tensorboard
+                    self.logaudio_tboard(self.writer)# tensorboard
 
                 # # measure time required to process one batch 
                 # print(f"Time to process a batch: {time.time() - end}")
@@ -145,7 +163,7 @@ class Trainer(torch.nn.Module):
                     for i in range(0,len(loss_vals)):
                         loss_term=self.args.loss_alphas[i]*loss_vals[i]
                         loss+=loss_term
-                        writer.add_scalar("val_"+loss_names[i], loss_term.item(), epoch * len(self.valloader) + j) # tensorboard
+                        self.writer.add_scalar("val_"+loss_names[i], loss_term.item(), epoch * len(self.valloader) + j) # tensorboard
 
                     # compute loss for the current batch
                     val_loss += loss.item()  
@@ -156,39 +174,35 @@ class Trainer(torch.nn.Module):
             avg_train_loss = train_loss / num_samples_train
             avg_val_loss = val_loss / num_samples_val
             print(f'Epoch: {epoch}, Train. Loss: {avg_train_loss:.5f}, Val. Loss: {avg_val_loss:.5f}')
-            loss_evol.append((avg_train_loss,avg_val_loss)) 
+            self.loss_evol.append((avg_train_loss,avg_val_loss)) 
 
-            writer.add_scalar('TrainLoss', avg_train_loss, epoch) # tensorboard
-            writer.add_scalar('ValLoss', avg_val_loss, epoch) # tensorboard
+            self.writer.add_scalar('TrainLoss', avg_train_loss, epoch) # tensorboard
+            self.writer.add_scalar('ValLoss', avg_val_loss, epoch) # tensorboard
             
             # Save checkpoint (overwrite)
             if (bool(self.args.store_outputs)) & (epoch % self.args.checkpoint_step ==0):
-                self.save_checkpoint(epoch,loss_evol,str(epoch))
+                self.save_checkpoint(epoch,self.loss_evol,str(epoch))
                 
             # Early stopping: stop when validation loss doesnt improve for 30 epochs
             if avg_val_loss < best_val_loss:
                 # save the best checkpoint so far 
                 if (bool(self.args.store_outputs)):
-                    self.save_checkpoint(epoch,loss_evol,"best")
+                    self.save_checkpoint(epoch,self.loss_evol,"best")
                 best_val_loss = avg_val_loss
                 counter = 0
+                print(f'Loss decreased.')
             else:
                 counter += 1
-                print(f'Loss did not decrease x{counter}.')
-
-            if counter >= 30:
-                print(f'Early stopping after {counter +1} epochs without improvement.')
-                # break
+                print(f'Loss did not decrease for {counter} epochs.')
             
         end=time.time()
         print(f"Finished training after: {(end-start)} seconds")
-        writer.close()
+        self.writer.close()
 
 if __name__ == "__main__":
     # ---- test training loop ----
 
     args = Options().parse()
-
     new_experiment=Trainer(args)
     new_experiment.train()
 

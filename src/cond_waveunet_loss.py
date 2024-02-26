@@ -8,10 +8,27 @@
 from distutils.version import LooseVersion
 
 import torch
+import torchaudio
 import torch.nn.functional as F
 
 is_pytorch_17plus = LooseVersion(torch.__version__) >= LooseVersion("1.7")
 
+
+class LogMelSpectrogramLoss(torch.nn.Module):
+    def __init__(self, sample_rate=48000, n_fft=2048, hop_length=512, n_mels=128):
+        super(LogMelSpectrogramLoss, self).__init__()
+        self.mel_spectrogram = torchaudio.transforms.MelSpectrogram(sample_rate=sample_rate, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels)
+        self.mse_loss = torch.nn.MSELoss()
+
+    def forward(self, predicted_audio, target_audio):
+        # Compute the log mel spectrogram for predicted and target audio
+        predicted_mel_spec = torch.log(self.mel_spectrogram(predicted_audio) + 1e-9)  # Add epsilon to avoid log(0)
+        target_mel_spec = torch.log(self.mel_spectrogram(target_audio) + 1e-9)
+
+        # Compute the MSE loss between log mel spectrograms of predicted and target audio
+        loss = self.mse_loss(predicted_mel_spec, target_mel_spec)
+        return loss
+    
 
 def stft(x, fft_size, hop_size, win_length, window):
     """Perform STFT and convert to magnitude spectrogram.
@@ -196,11 +213,11 @@ class LossOfChoice(torch.nn.Module):
 
     def forward(self, data, model_waveunet, model_reverbenc, device):
         # get datapoint
-        sContent_in = data[0].to(device) # s1r1
-        sStyle_in=data[1].to(device) # s2r2
-        sTarget=data[2].to(device) # s1r2
-        sAnecho=data[3].to(device) # s1
-        sPositive=data[4].to(device) # s2r1
+        sContent_in = data[0].to(device) # s1r1 - content
+        sStyle_in=data[1].to(device) # s2r2 - style
+        sTarget=data[2].to(device) # s1r2 - target
+        sAnecho=data[3].to(device) # s1 - anechoic
+        # sPositive=data[4].to(device) # s2r1
         # forward pass - get prediction of the ir
         embStyle=model_reverbenc(sStyle_in)
         sPrediction=model_waveunet(sContent_in,embStyle)
@@ -248,18 +265,18 @@ class LossOfChoice(torch.nn.Module):
             with open("losses.txt", 'a') as file:
                 file.write(f"{L_stft} {L_rev} {L_emb}\n")
         
-        elif self.losstype=="stft+rev+emb+trip":
-            # get the embedding of the prediction
-            embTarget=model_reverbenc(sTarget)
-            embPositive=model_reverbenc(sPositive)
-            L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
-            L_sc_rev, L_mag_rev = self.criterion_audio(sTarget.squeeze(1)-sAnecho.squeeze(1), sPrediction.squeeze(1)-sAnecho.squeeze(1))
-            L_stft=L_sc+L_mag
-            L_rev=L_sc_rev+L_mag_rev
-            L_emb=(1-((torch.mean(self.criterion_emb(embStyle,embTarget))+ 1) / 2))
-            L_trip=self.criterion_trip(embStyle,embPositive,embTarget)
-            L = [L_stft, L_rev, L_emb, L_trip]
-            L_names=["L_stft", "L_rev", "L_emb", "L_trip"]
+        # elif self.losstype=="stft+rev+emb+trip":
+        #     # get the embedding of the prediction
+        #     embTarget=model_reverbenc(sTarget)
+        #     embPositive=model_reverbenc(sPositive)
+        #     L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
+        #     L_sc_rev, L_mag_rev = self.criterion_audio(sTarget.squeeze(1)-sAnecho.squeeze(1), sPrediction.squeeze(1)-sAnecho.squeeze(1))
+        #     L_stft=L_sc+L_mag
+        #     L_rev=L_sc_rev+L_mag_rev
+        #     L_emb=(1-((torch.mean(self.criterion_emb(embStyle,embTarget))+ 1) / 2))
+        #     L_trip=self.criterion_trip(embStyle,embPositive,embTarget)
+        #     L = [L_stft, L_rev, L_emb, L_trip]
+        #     L_names=["L_stft", "L_rev", "L_emb", "L_trip"]
 
 
         else:

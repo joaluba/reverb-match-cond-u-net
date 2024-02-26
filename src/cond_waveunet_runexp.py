@@ -44,12 +44,11 @@ if __name__ == "__main__":
     # load default arguments
     args = Options().parse()
 
-    args.epochs=10
 
     # Conditions of the experiment
     cond_trasf_type = ["many-to-many"]
     cond_losses=["stft+rev+emb"]
-    cond_alphas=[[1,2,10],[1,2,0],[1,5,10]]
+    cond_alphas=[[1,1,1]]
 
     # Conditions combinations list
     from itertools import product
@@ -98,15 +97,20 @@ if __name__ == "__main__":
         args.losstype=loss
         args.loss_alphas=alphas
 
-        # create training tag based on date and params
-        date_tag = datetime.now().strftime("%d-%m-%Y--%H-%M")
-        loss_tag = "_"+ loss
-        transf_tag="_"+ transf_type
-        alpha_tag="_"+ '_'.join(map(str, alphas))
-        tag=date_tag+transf_tag+loss_tag+alpha_tag
+        # # create training tag based on date and params
+        # date_tag = datetime.now().strftime("%d-%m-%Y--%H-%M")
+        # loss_tag = "_"+ loss
+        # transf_tag="_"+ transf_type
+        # alpha_tag="_"+ '_'.join(map(str, alphas))
+        # tag=date_tag+transf_tag+loss_tag+alpha_tag
 
-        # prepare diectory for this training combination
-        args.savedir=os.path.join(runexp_savepath,tag) 
+        # # prepare diectory for this training combination
+        # args.savedir=os.path.join(runexp_savepath,tag) 
+
+        # resume training 
+        args.savedir="/home/Imatge/media/ssd2/RESULTS-reverb-match-cond-u-net/runs-exp-19-02-2024/19-02-2024--14-58_many-to-many_stft+rev+emb_1_1_1"
+        args.resume_checkpoint="checkpointbest.pt"
+        args.resume_tboard=args.savedir
 
         # train with current parameters
         new_experiment=cond_waveunet_trainer.Trainer(args)

@@ -7,6 +7,7 @@ import os
 from os.path import join as pjoin
 from torch.utils.tensorboard import SummaryWriter
 import speechmetrics
+from torchmetrics.audio import ScaleInvariantSignalDistortionRatio, SpeechReverberationModulationEnergyRatio
 import numpy as np
 import pandas as pd
 import soundfile as sf
@@ -14,6 +15,7 @@ import soundfile as sf
 import cond_waveunet_dataset
 import cond_waveunet_loss 
 import cond_waveunet_model
+import joa_helpers as hlp
 from cond_waveunet_options import OptionsEval
 from torch.utils.data import Subset
 
@@ -48,9 +50,9 @@ class Evaluator(torch.nn.Module):
         self.model_waveunet.load_state_dict(self.train_results["model_waveunet_state_dict"])
         # ---- DATASETS: ----
         self.args_train.split=self.args_test.eval_split
-        self.testset=cond_waveunet_dataset.DatasetReverbTransfer(self.args_train)
-        indices_chosen=self.testset.get_idx_with_rt60diff(self.args_test.rt60diffmin,self.args_test.rt60diffmax)
-        self.testset=Subset(self.testset,indices_chosen)
+        self.testset_orig=cond_waveunet_dataset.DatasetReverbTransfer(self.args_train)
+        indices_chosen=self.testset_orig.get_idx_with_rt60diff(self.args_test.rt60diffmin,self.args_test.rt60diffmax)
+        self.testset=Subset(self.testset_orig,indices_chosen)
         # ---- DATA LOADER: ----
         self.testloader = torch.utils.data.DataLoader(self.testset, batch_size=self.args_test.batch_size_eval, shuffle=True, num_workers=6,pin_memory=True)
 
@@ -155,6 +157,57 @@ class Evaluator(torch.nn.Module):
         L_sc_p, L_mag_p=self.criterion_audio(prediction_batch, target_batch)
         self.scores["stftloss_predict"].append(float((L_sc_p+L_mag_p).cpu().numpy()))
 
+    def add_all_losses(self,idx,comp_name,x1,x2):
+
+        if len(x1.shape)<3:
+            x1=x1.unsqueeze(0)
+        if len(x2.shape)<3:
+            x2=x2.unsqueeze(0)
+        x1_emb=self.model_reverbenc(x1)
+        x2_emb=self.model_reverbenc(x2)
+        
+        # ----- Load criteria -----
+        # stft loss with 4 resolutions
+        criterion_stft_loss1 = cond_waveunet_loss.MultiResolutionSTFTLoss(
+            fft_sizes=[64, 512, 2048,8192],
+            hop_sizes=[32, 256, 1024,4096],
+            win_lengths=[64, 512, 2048, 8192],
+            window="hann_window")
+        
+        # stft loss with 5 resolutions
+        criterion_stft_loss2 = cond_waveunet_loss.MultiResolutionSTFTLoss(
+            fft_sizes=[256, 512, 1024, 2048,4096],
+            hop_sizes=[64, 128, 256,512,1024],
+            win_lengths=[256, 512, 1024, 2048,4096],
+            window="hann_window")
+
+        criterion_logmel=cond_waveunet_loss.LogMelSpectrogramLoss()
+        criterion_si_sdr = ScaleInvariantSignalDistortionRatio()
+        criterion_srmr = SpeechReverberationModulationEnergyRatio(48000)
+        criterion_mse = torch.nn.MSELoss()
+        criterion_cosine = torch.nn.CosineSimilarity(dim=2,eps=1e-8)
+
+        # ----- Compute audio losses -----
+        L_sc, L_mag = criterion_stft_loss1(x1,x2)
+        L_stft1 = L_sc + L_mag
+        L_sc, L_mag = criterion_stft_loss2(x1,x2)
+        L_stft2 = L_sc + L_mag
+        L_logmel=criterion_logmel(x1,x2)
+        L_wav_L2=criterion_mse(x1,x2)
+        L_si_sdr=criterion_si_sdr(x1,x2)
+        L_srmr=criterion_srmr(x2)
+
+        # ----- Compute embedding losses -----
+        L_emb_cosine=(1-((torch.mean(criterion_cosine(x1_emb,x2_emb))+ 1) / 2))
+        L_emb_euc=torch.dist(x1_emb,x2_emb)
+
+        df_row={'idx':idx, 'compared': comp_name,
+                'L_stft1': L_stft1,'L_stft2': L_stft2, 'L_logmel': L_logmel,'L_wav_L2': L_wav_L2, 
+                'L_si_sdr': L_si_sdr, 'L_srmr': L_srmr,  'L_emb_cosine': L_emb_cosine, 'L_emb_euc': L_emb_euc}
+        
+        return df_row
+        
+
     def add_styleloss_metrics_batch(self,input_batch,target_batch,prediction_batch):
         # Function to compute style loss for a batch (as a metric) 
         # It has no output and it modifies the dictionary "scores"
@@ -165,6 +218,61 @@ class Evaluator(torch.nn.Module):
         # how close the signal after transformation is to the target:
         scores_prediction=self.criterion_emb(prediction_batch, target_batch)
         self.scores["styleloss_predict"].append(float(scores_prediction[0].cpu().numpy()))
+
+
+def eval_losses(args_test):
+
+    all_losses=pd.DataFrame({'idx':[], 'compared': [],
+                'L_stft1': [],'L_stft2': [], 'L_logmel': [],'L_wav_L2': [], 
+                'L_si_sdr': [], 'L_srmr': [],  'L_emb_cosine': [], 'L_emb_euc': []})
+
+    subdir_path = os.path.join(args_test.eval_dir, args_test.eval_subdir)
+
+    print(f"Comparing losses for {subdir_path}")
+
+    # load results from checkpoints in the directory
+    for filename in os.listdir(subdir_path):
+        if filename.startswith("checkpoint") & filename.endswith("best.pt"): # only computing measures for the best checkpoint
+            with torch.no_grad():
+                # specify training params file
+                args_test.train_args_file=pjoin(subdir_path,"trainargs.pt")
+                # load checkpoint file
+                args_test.train_results_file=pjoin(subdir_path,filename)
+                # create tag for this evalauation
+                args_test.eval_tag=args_test.train_results_file.split('/')[-2]
+                # create evaluator object
+                tmp_evaluation=Evaluator(args_test)
+
+                for i in range(0, len(tmp_evaluation.testset_orig)):
+                    print(i)
+                    s1r1, s2r2, s1r2_gt, _, s1, _, s1r1b = tmp_evaluation.testset_orig.get_item_test(i)
+                    _,r2,_ = tmp_evaluation.testset_orig.get_rirs(i)
+                    s2r2_emb=tmp_evaluation.model_reverbenc(s2r2.unsqueeze(0))
+                    s1r2_pred=tmp_evaluation.model_waveunet(s1r1.unsqueeze(0),s2r2_emb) 
+
+                    # target : predicion
+                    all_losses=pd.concat([all_losses, pd.DataFrame(tmp_evaluation.add_all_losses(i,"s1r2_gt:s1r2_pred",s1r2_gt,s1r2_pred),index=[0])],ignore_index=True)
+                    # target : content
+                    all_losses=pd.concat([all_losses, pd.DataFrame(tmp_evaluation.add_all_losses(i,"s1r2_gt:s1r1",s1r2_gt,s1r1),index=[0])], ignore_index=True)
+                    # content_a : content_b
+                    all_losses=pd.concat([all_losses, pd.DataFrame(tmp_evaluation.add_all_losses(i,"s1r1:s1r1b",s1r1,s1r1b),index=[0])], ignore_index=True)
+
+                    # target-anechoic : predicion-anechoic
+                    all_losses=pd.concat([all_losses, pd.DataFrame(tmp_evaluation.add_all_losses(i,"s1r2_gt-a:s1r2_pred-a",s1r2_gt-s1,s1r2_pred-s1),index=[0])], ignore_index=True)
+                    # target-anechoic: content-anechoic
+                    all_losses=pd.concat([all_losses, pd.DataFrame(tmp_evaluation.add_all_losses(i,"s1r2_gt-a:s1r1-a",s1r2_gt-s1,s1r1-s1),index=[0])], ignore_index=True)
+                    # content_a-anechoic: content_b-anechoic
+                    all_losses=pd.concat([all_losses, pd.DataFrame(tmp_evaluation.add_all_losses(i,"s1r1-a:s1r1b-a",s1r1-s1,s1r1b-s1),index=[0])], ignore_index=True)
+
+                    # deconv(target) : deconv(predicion)
+                    all_losses=pd.concat([all_losses, pd.DataFrame(tmp_evaluation.add_all_losses(i,"d(s1r2_gt):d(s1r2_pred)",hlp.torch_deconv_W(s1r2_gt,r2),hlp.torch_deconv_W(s1r2_pred,r2)),index=[0])], ignore_index=True)
+                    # deconv(target): deconv(content)
+                    all_losses=pd.concat([all_losses, pd.DataFrame(tmp_evaluation.add_all_losses(i,"d(s1r2_gt):d(s1r1)",hlp.torch_deconv_W(s1r2_gt,r2),hlp.torch_deconv_W(s1r1,r2)),index=[0])], ignore_index=True)
+                    # deconv(content_a): deconv(content_b)
+                    all_losses=pd.concat([all_losses, pd.DataFrame(tmp_evaluation.add_all_losses(i,"d(s1r1):d(s1r1b)",hlp.torch_deconv_W(s1r1,r2),hlp.torch_deconv_W(s1r1b,r2)),index=[0])], ignore_index=True)
+                    
+    all_losses.to_csv(args_test.eval_dir+args_test.eval_file_name, index=False)
+    print(f"Saved final results")
 
 
 def eval_directory(args_test):
@@ -207,28 +315,33 @@ if __name__ == "__main__":
 
     args_test=OptionsEval().parse()
 
-    args_test.eval_dir="/media/ssd2/RESULTS-reverb-match-cond-u-net/runs-exp-09-02-2024/"
+    args_test.eval_dir="/media/ssd2/RESULTS-reverb-match-cond-u-net/runs-exp-26-01-2024/"
+    args_test.eval_subdir="28-01-2024--15-34_many-to-many_stft"
+
+    args_test.device="cpu"
+    args_test.eval_file_name="all_losses.csv"
+    eval_losses(args_test)
 
     # Compute for all
-    args_test.rt60diffmin=-3
-    args_test.rt60diffmax=3
-    args_test.eval_file_name="eval_all.csv"
+    # args_test.rt60diffmin=-3
+    # args_test.rt60diffmax=3
+    # args_test.eval_file_name="eval_all.csv"
 
-    eval_directory(args_test)
+    # eval_directory(args_test)
 
-    # Compute for difficult re-reverberation
-    args_test.rt60diffmin=-2
-    args_test.rt60diffmax=-0.5
-    args_test.eval_file_name="eval_rt60diff-50ms.csv"
+    # # Compute for difficult re-reverberation
+    # args_test.rt60diffmin=-2
+    # args_test.rt60diffmax=-0.5
+    # args_test.eval_file_name="eval_rt60diff-50ms.csv"
 
-    eval_directory(args_test)
+    # eval_directory(args_test)
 
-    # Compute for difficult de-reverberation
-    args_test.rt60diffmin=0.5
-    args_test.rt60diffmax=2
-    args_test.eval_file_name="eval_rt60diff+50ms.csv"
+    # # Compute for difficult de-reverberation
+    # args_test.rt60diffmin=0.5
+    # args_test.rt60diffmax=2
+    # args_test.eval_file_name="eval_rt60diff+50ms.csv"
 
-    eval_directory(args_test)
+    # eval_directory(args_test)
 
 
 
