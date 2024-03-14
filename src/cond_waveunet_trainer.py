@@ -184,11 +184,11 @@ class Trainer(torch.nn.Module):
                 self.save_checkpoint(epoch,self.loss_evol,str(epoch))
                 
             # Early stopping: stop when validation loss doesnt improve for 30 epochs
-            if avg_val_loss < best_val_loss:
+            if avg_val_loss < self.best_val_loss:
                 # save the best checkpoint so far 
                 if (bool(self.args.store_outputs)):
                     self.save_checkpoint(epoch,self.loss_evol,"best")
-                best_val_loss = avg_val_loss
+                self.best_val_loss = avg_val_loss
                 counter = 0
                 print(f'Loss decreased.')
             else:
