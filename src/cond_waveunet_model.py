@@ -189,17 +189,18 @@ class waveunet(nn.Module):
             nn.Tanh()
         )
 
-    def forward(self, x, z):
+    def forward(self, x, z_enc,z_dec):
         # x - input waveform
         # o - waveform flowing through the net
-        # z - conditioning vector
+        # z_enc - conditioning vector for decoder
+        # z_dec - conditioning vector for decoder
         skipfeats = []
         o = x
 
         # Up Sampling
         for i in range(self.n_layers):
             # encoder layer
-            o = self.encoder[i](o,z)
+            o = self.encoder[i](o,z_enc)
             # store skip features for later
             skipfeats.append(o)
             # decimate, [batch_size, T // 2, channels]
@@ -215,7 +216,7 @@ class waveunet(nn.Module):
             # concatenate with skip features
             o = torch.cat([o, skipfeats[self.n_layers - i - 1]], dim=1)
             # decoder layer 
-            o = self.decoder[i](o,z)
+            o = self.decoder[i](o,z_dec)
             
 
         # concatenate output with input

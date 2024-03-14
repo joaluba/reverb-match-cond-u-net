@@ -69,10 +69,17 @@ class DatasetReverbTransfer(Dataset):
         else: 
             r2 = hlp.torch_load_mono(self.style_ir,self.fs)
 
+
+        # separate style rir into early and late 
+        cutpoint_ms=50
+        r2_early, r2_late = hlp.rir_split_earlylate(r2,self.fs,cutpoint_ms)
+
         # Convolve signals with impulse responses
         s1r1 = torch.from_numpy(scipy.signal.fftconvolve(s1, r1,mode="full"))[:,:self.sig_len]
         s2r2 = torch.from_numpy(scipy.signal.fftconvolve(s2, r2,mode="full"))[:,:self.sig_len]
-        s1r2 = torch.from_numpy(scipy.signal.fftconvolve(s1, r2,mode="full"))[:,:self.sig_len]
+        # s1r2 = torch.from_numpy(scipy.signal.fftconvolve(s1, r2,mode="full"))[:,:self.sig_len]
+        s1r2_early = torch.from_numpy(scipy.signal.fftconvolve(s1, r2_early,mode="full"))[:,:self.sig_len]
+        s1r2_late = torch.from_numpy(scipy.signal.fftconvolve(s1, r2_late,mode="full"))[:,:self.sig_len] 
         # s2r1 = torch.from_numpy(scipy.signal.fftconvolve(s2, r1,mode="full"))[:,:self.sig_len]
 
         # Add noise to signals
@@ -86,11 +93,15 @@ class DatasetReverbTransfer(Dataset):
         # scale data but preserve symmetry
         s1r1n1=hlp.torch_standardize_max_abs(s1r1n1) # Reverberant content sound
         s2r2n2=hlp.torch_standardize_max_abs(s2r2n2) # Style sound
-        s1r2=hlp.torch_standardize_max_abs(s1r2) # Target
+        s1r2_early=hlp.torch_standardize_max_abs(s1r2_early) # Target early part
+        s1r2_late=hlp.torch_standardize_max_abs(s1r2_late) # Target late part
+        s1r2=hlp.torch_standardize_max_abs(s1r2_early+s1r2_late) # Target all
+        # s1r2=hlp.torch_standardize_max_abs(s1r2) # Target
         # s2r1=hlp.torch_standardize_max_abs(s2r1) # "Flipped" target
         s1=hlp.torch_standardize_max_abs(s1) # Anechoic content sound
 
-        return s1r1n1, s2r2n2, s1r2, s1
+
+        return s1r1n1, s2r2n2, s1r2, s1, s1r2_early, s1r2_late
     
     def get_idx_with_rt60diff(self,diff_rt60_min,diff_rt60_max):
         # create column diff_rt60 to compute difference in rt60 between content and style audio

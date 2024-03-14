@@ -233,3 +233,12 @@ def torch_deconv_W(reverberant_signal, room_impulse_response):
     # Take real part to get rid of imaginary part 
     estimated_anechoic_signal = torch.real(estimated_anechoic_signal)
     return estimated_anechoic_signal[:len(reverberant_signal)].unsqueeze(0).unsqueeze(0)
+
+
+def rir_split_earlylate(rir, fs, cutpoint_ms):
+    rir_early=np.zeros((rir.shape))
+    rir_late=np.zeros((rir.shape))
+    rir_early[:int(cutpoint_ms*fs)]=rir[:int(cutpoint_ms*fs)]
+    rir_late[int(cutpoint_ms*fs):]=rir[int(cutpoint_ms*fs):]
+    return rir_early, rir_late
+    

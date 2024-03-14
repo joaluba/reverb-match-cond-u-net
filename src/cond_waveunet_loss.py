@@ -217,10 +217,13 @@ class LossOfChoice(torch.nn.Module):
         sStyle_in=data[1].to(device) # s2r2 - style
         sTarget=data[2].to(device) # s1r2 - target
         sAnecho=data[3].to(device) # s1 - anechoic
+        sEarly=data[3].to(device) # s1r2_early - early reflections
+        sLate=data[3].to(device) # s1r2_late - late reverb
         # sPositive=data[4].to(device) # s2r1
         # forward pass - get prediction of the ir
+        embContent=model_reverbenc(sContent_in)
         embStyle=model_reverbenc(sStyle_in)
-        sPrediction=model_waveunet(sContent_in,embStyle)
+        sPrediction=model_waveunet(sContent_in,embContent,embStyle)
 
         if self.losstype=="stft":
             L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
@@ -264,6 +267,20 @@ class LossOfChoice(torch.nn.Module):
             # Append the losses to the text file
             with open("losses.txt", 'a') as file:
                 file.write(f"{L_stft} {L_rev} {L_emb}\n")
+
+        elif self.losstype=="early+late+emb":
+            # get the embedding of the prediction
+            embTarget=model_reverbenc(sTarget)
+            L_sc_early, L_mag_early = self.criterion_audio(sTarget.squeeze(1)-sLate.squeeze(1), sPrediction.squeeze(1)-sLate.squeeze(1))
+            L_sc_late, L_mag_late = self.criterion_audio(sTarget.squeeze(1)-sEarly.squeeze(1), sPrediction.squeeze(1)-sEarly.squeeze(1))
+            L_early=L_sc_early+L_mag_early
+            L_late=L_sc_late+L_mag_late
+            L_emb=(1-((torch.mean(self.criterion_emb(embStyle,embTarget))+ 1) / 2))
+            L = [L_early, L_late, L_emb]
+            L_names=["L_early", "L_late", "L_emb"]
+            # Append the losses to the text file
+            with open("losses.txt", 'a') as file:
+                file.write(f"{L_early} {L_late} {L_emb}\n")
         
         # elif self.losstype=="stft+rev+emb+trip":
         #     # get the embedding of the prediction
