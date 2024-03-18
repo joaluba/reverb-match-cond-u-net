@@ -57,7 +57,7 @@ if __name__ == "__main__":
     user_message = get_msg_for_exp_log("Enter info for experiment log")
 
     # Write the message to a file
-    with open("/home/Imatge/projects/reverb-match-cond-u-net/experiment_log.txt", "a") as file:
+    with open("/home/ubuntu/joanna/reverb-match-cond-u-net/experiment_log.txt", "a") as file:
         file.write(user_message)
 
     # load default arguments
@@ -66,8 +66,8 @@ if __name__ == "__main__":
 
     # Conditions of the experiment
     cond_trasf_type = ["many-to-many"]
-    cond_losses=["early+late+emb"]
-    cond_alphas=[[1,1,1]]
+    cond_losses=["early+late", "stft","stft+early+late"]
+    cond_alphas=[[1,1],[1],[1,1,1]]
 
     # Conditions combinations list
     from itertools import product
@@ -126,7 +126,7 @@ if __name__ == "__main__":
         args.savedir=os.path.join(runexp_savepath,tag) 
 
         # # resume training 
-        # args.savedir="/home/Imatge/media/ssd2/RESULTS-reverb-match-cond-u-net/runs-exp-19-02-2024/19-02-2024--14-58_many-to-many_stft+rev+emb_1_1_1"
+        # args.savedir="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-19-02-2024/19-02-2024--14-58_many-to-many_stft+rev+emb_1_1_1"
         # args.resume_checkpoint="checkpointbest.pt"
         # args.resume_tboard=args.savedir
 

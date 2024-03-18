@@ -30,6 +30,10 @@ class Trainer(torch.nn.Module):
 
         # ---- LOSS CRITERION: ----
         self.criterion=cond_waveunet_loss.LossOfChoice(args).to(args.device)
+        # load stft loss as a validation loss for all conditions
+        args_tmp=args
+        args_tmp.losstype="stft"
+        self.criterion_val=cond_waveunet_loss.LossOfChoice(args_tmp).to(args.device)
 
         # ---- DATASETS: ----
         args.split="train"
@@ -168,17 +172,24 @@ class Trainer(torch.nn.Module):
 
                     # compute loss for the current batch
                     val_loss += loss.item()  
+                    
+                    # apart from regular validation loss, compute stft loss to easily compare between the conditions
+                    loss_vals,_ = self.criterion_val(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
+                    stft_loss += loss_vals[0].item()
+                    
 
             # Print stats at the end of the epoch
             num_samples_train=len(self.trainloader.sampler)
             num_samples_val=len(self.valloader.sampler)
             avg_train_loss = train_loss / num_samples_train
             avg_val_loss = val_loss / num_samples_val
+            avg_stft_loss =stft_loss/num_samples_val
             print(f'Epoch: {epoch}, Train. Loss: {avg_train_loss:.5f}, Val. Loss: {avg_val_loss:.5f}')
             self.loss_evol.append((avg_train_loss,avg_val_loss)) 
 
             self.writer.add_scalar('TrainLoss', avg_train_loss, epoch) # tensorboard
             self.writer.add_scalar('ValLoss', avg_val_loss, epoch) # tensorboard
+            self.writer.add_scalar('VAL_STFT'+ avg_stft_loss, epoch) # tensorboard
             
             # Save checkpoint (overwrite)
             if (bool(self.args.store_outputs)) & (epoch % self.args.checkpoint_step ==0):

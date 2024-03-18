@@ -194,7 +194,7 @@ class LossOfChoice(torch.nn.Module):
         self.load_criterions(args.device)
 
     def load_criterions(self,device):
-        if self.losstype=="stft" or self.losstype=="stft+rev" or self.losstype=="rev":
+        if self.losstype=="stft" or self.losstype=="stft+rev" or self.losstype=="rev" or self.losstype=="early+late" or self.losstype=="stft+early+late":
             self.criterion_audio=MultiResolutionSTFTLoss().to(device)
 
         elif self.losstype=="stft+emb":
@@ -282,6 +282,24 @@ class LossOfChoice(torch.nn.Module):
             # Append the losses to the text file
             with open("losses.txt", 'a') as file:
                 file.write(f"{L_early} {L_late} {L_emb}\n")
+        
+        elif self.losstype=="early+late":
+            L_sc_early, L_mag_early = self.criterion_audio(hlp.torch_standardize_max_abs(sTarget.squeeze(1)-sLate.squeeze(1)), hlp.torch_standardize_max_abs(sPrediction.squeeze(1)-sLate.squeeze(1)))
+            L_sc_late, L_mag_late = self.criterion_audio(hlp.torch_standardize_max_abs(sTarget.squeeze(1)-sEarly.squeeze(1)), hlp.torch_standardize_max_abs(sPrediction.squeeze(1)-sEarly.squeeze(1)))
+            L_early=L_sc_early+L_mag_early
+            L_late=L_sc_late+L_mag_late
+            L = [L_early, L_late]
+            L_names=["L_early", "L_late"]
+
+        elif self.losstype=="stft+early+late":
+            L_sc_stft, L_mag_stft = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
+            L_sc_early, L_mag_early = self.criterion_audio(hlp.torch_standardize_max_abs(sTarget.squeeze(1)-sLate.squeeze(1)), hlp.torch_standardize_max_abs(sPrediction.squeeze(1)-sLate.squeeze(1)))
+            L_sc_late, L_mag_late = self.criterion_audio(hlp.torch_standardize_max_abs(sTarget.squeeze(1)-sEarly.squeeze(1)), hlp.torch_standardize_max_abs(sPrediction.squeeze(1)-sEarly.squeeze(1)))
+            L_stft = L_sc_stft + L_mag_stft
+            L_early = L_sc_early+L_mag_early
+            L_late = L_sc_late+L_mag_late
+            L = [L_stft,L_early, L_late]
+            L_names=["L_stft","L_early", "L_late"]
         
         # elif self.losstype=="stft+rev+emb+trip":
         #     # get the embedding of the prediction

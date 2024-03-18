@@ -27,8 +27,8 @@ class Options():
         parser = self.parser
 
         # general arguments
-        parser.add_argument('--projectdir', default="/home/Imatge/projects/reverb-match-cond-u-net/", type=str)
-        parser.add_argument('--savedir', default="/media/ssd2/RESULTS-reverb-match-cond-u-net/", type=str)
+        parser.add_argument('--projectdir', default="/home/ubuntu/joanna/reverb-match-cond-u-net/", type=str)
+        parser.add_argument('--savedir', default="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/", type=str)
         parser.add_argument('--device', default="cuda", type=str)
         parser.add_argument('--fs', default=48000, type=int)
 
@@ -42,7 +42,7 @@ class Options():
         parser.add_argument('--style_rir', default="/home/ubuntu/Data/ACE-Single/Lecture_Room_1/1/Single_508_1_RIR.wav", type=str)
         parser.add_argument('--content_rir', default=None, type=str)
         parser.add_argument('--df_metadata', 
-                            default="/home/Imatge/projects/reverb-match-cond-u-net/dataset-metadata/nonoise2_dacom.csv" , type=str)
+                            default="/home/ubuntu/joanna/reverb-match-cond-u-net/dataset-metadata/nonoise2_48kHz_guestxr_pilot.csv" , type=str)
 
         # training arguments
         parser.add_argument('--num_epochs', default=3, type=int)
@@ -91,16 +91,16 @@ class OptionsEval():
         parser.add_argument('--batch_size_eval', default=16, type=int)
         parser.add_argument('--checkpoint_development', default=False, type=bool)
         parser.add_argument('--eval_file_name', default="evaluation_metrics.csv", type=str)
-        parser.add_argument('--eval_dir', default="/media/ssd2/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/", type=str)
+        parser.add_argument('--eval_dir', default="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/", type=str)
         parser.add_argument('--eval_split', default="test", type=str)
         parser.add_argument('--rt60diffmin', default=-3, type=float)
         parser.add_argument('--rt60diffmax', default=3, type=float)
         parser.add_argument('--train_results_file', 
-                            default="/media/ssd2/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/18-01-2024--00-56_many-to-many_stft/checkpoint_best.pt", type=str)
+                            default="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/18-01-2024--00-56_many-to-many_stft/checkpoint_best.pt", type=str)
         parser.add_argument('--eval_tag', default="18-01-2024--00-56_many-to-many_stft", type=str)
         parser.add_argument('--train_args_file', 
-                    default="/media/ssd2/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/18-01-2024--00-56_many-to-many_stft/trainargs.pt", type=str)
-        parser.add_argument('--savedir', default="/media/ssd2/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/", type=str)
+                    default="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/18-01-2024--00-56_many-to-many_stft/trainargs.pt", type=str)
+        parser.add_argument('--savedir', default="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/", type=str)
 
     def parse(self):
         # initialize parser
