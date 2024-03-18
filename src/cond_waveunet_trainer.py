@@ -71,8 +71,9 @@ class Trainer(torch.nn.Module):
             sStyle_in=data[1].to(self.args.device)
             sTarget_gt=data[2].to(self.args.device)
             # forward pass - get prediction of the ir
-            embedding_gt=self.model_reverbenc(sStyle_in)
-            sTarget_prediction=self.model_waveunet(sContent_in,embedding_gt)
+            embedding_enc=self.model_reverbenc(sContent_in)
+            embedding_dec=self.model_reverbenc(sStyle_in)
+            sTarget_prediction=self.model_waveunet(sContent_in,embedding_enc,embedding_dec)
             return sContent_in, sStyle_in, sTarget_gt, sTarget_prediction
         
     def logaudio_tboard(self,writer):

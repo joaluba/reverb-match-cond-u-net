@@ -10,6 +10,7 @@ from distutils.version import LooseVersion
 import torch
 import torchaudio
 import torch.nn.functional as F
+import joa_helpers as hlp
 
 is_pytorch_17plus = LooseVersion(torch.__version__) >= LooseVersion("1.7")
 
@@ -200,7 +201,7 @@ class LossOfChoice(torch.nn.Module):
             self.criterion_audio=MultiResolutionSTFTLoss().to(device)
             self.criterion_emb=torch.nn.CosineSimilarity(dim=2,eps=1e-8).to(device)
 
-        elif self.losstype=="stft+rev+emb":
+        elif self.losstype=="stft+rev+emb" or self.losstype=="early+late+emb":
             self.criterion_audio=MultiResolutionSTFTLoss().to(device)
             self.criterion_emb=torch.nn.CosineSimilarity(dim=2,eps=1e-8).to(device)
         
@@ -217,8 +218,8 @@ class LossOfChoice(torch.nn.Module):
         sStyle_in=data[1].to(device) # s2r2 - style
         sTarget=data[2].to(device) # s1r2 - target
         sAnecho=data[3].to(device) # s1 - anechoic
-        sEarly=data[3].to(device) # s1r2_early - early reflections
-        sLate=data[3].to(device) # s1r2_late - late reverb
+        sEarly=data[4].to(device) # s1r2_early - early reflections
+        sLate=data[5].to(device) # s1r2_late - late reverb
         # sPositive=data[4].to(device) # s2r1
         # forward pass - get prediction of the ir
         embContent=model_reverbenc(sContent_in)
@@ -271,8 +272,8 @@ class LossOfChoice(torch.nn.Module):
         elif self.losstype=="early+late+emb":
             # get the embedding of the prediction
             embTarget=model_reverbenc(sTarget)
-            L_sc_early, L_mag_early = self.criterion_audio(sTarget.squeeze(1)-sLate.squeeze(1), sPrediction.squeeze(1)-sLate.squeeze(1))
-            L_sc_late, L_mag_late = self.criterion_audio(sTarget.squeeze(1)-sEarly.squeeze(1), sPrediction.squeeze(1)-sEarly.squeeze(1))
+            L_sc_early, L_mag_early = self.criterion_audio(hlp.torch_standardize_max_abs(sTarget.squeeze(1)-sLate.squeeze(1)), hlp.torch_standardize_max_abs(sPrediction.squeeze(1)-sLate.squeeze(1)))
+            L_sc_late, L_mag_late = self.criterion_audio(hlp.torch_standardize_max_abs(sTarget.squeeze(1)-sEarly.squeeze(1)), hlp.torch_standardize_max_abs(sPrediction.squeeze(1)-sEarly.squeeze(1)))
             L_early=L_sc_early+L_mag_early
             L_late=L_sc_late+L_mag_late
             L_emb=(1-((torch.mean(self.criterion_emb(embStyle,embTarget))+ 1) / 2))

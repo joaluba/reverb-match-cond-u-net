@@ -1,0 +1,11 @@
+
+[2024-03-14-17:09:22]  testing new experiment log, pilot for symmetric conditioning and erly/late loss
+[2024-03-14-17:28:05] testing new experiment log, pilot for symmetric conditioning and erly/late loss
+[2024-03-15-14:49:39] debug
+[2024-03-15-15:03:32] debug
+[2024-03-15-15:14:44] debug early/late loss
+[2024-03-15-15:32:23] same 
+[2024-03-15-16:45:15] same 
+[2024-03-18-10:18:39] corrected scaling of early/late
+[2024-03-18-10:22:23] same
+[2024-03-18-10:36:40] same

@@ -44,11 +44,16 @@ def torch_standardize_std(sig_in):
     sig_out=(sig_in-mu)/sigma
     return sig_out
 
-def torch_standardize_max_abs(signal):
+def torch_standardize_max_abs(signal,out=False):
     max_abs_value = torch.max(torch.abs(signal))
     standardized_signal = signal / max_abs_value
-    standardized_signal -= torch.mean(standardized_signal)
-    return standardized_signal
+    # standardized_signal -= torch.mean(standardized_signal)
+    if out:
+        return standardized_signal, max_abs_value
+    else:
+        return standardized_signal
+
+
 
 def torch_resample_if_needed(audio,sr,sr_target):
     if sr!=sr_target:
@@ -236,9 +241,9 @@ def torch_deconv_W(reverberant_signal, room_impulse_response):
 
 
 def rir_split_earlylate(rir, fs, cutpoint_ms):
-    rir_early=np.zeros((rir.shape))
-    rir_late=np.zeros((rir.shape))
-    rir_early[:int(cutpoint_ms*fs)]=rir[:int(cutpoint_ms*fs)]
-    rir_late[int(cutpoint_ms*fs):]=rir[int(cutpoint_ms*fs):]
+    rir_early=torch.zeros_like(rir)
+    rir_late=torch.zeros_like(rir)
+    rir_early[:,:int(1e-3*cutpoint_ms*fs)]=rir[:,:int(1e-3*cutpoint_ms*fs)]
+    rir_late[:,int(1e-3*cutpoint_ms*fs):]=rir[:,int(1e-3*cutpoint_ms*fs):]
     return rir_early, rir_late
     

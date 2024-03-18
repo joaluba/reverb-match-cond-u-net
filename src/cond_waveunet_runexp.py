@@ -39,7 +39,26 @@ def note_down_finished_cond(file_path,line,wheresaved):
             new_line = line.strip().replace("Scheduled", "Finished")
             file.write(new_line + ". \n"+ "-> Saved as:" + wheresaved + " \n" )
 
+
+def get_msg_for_exp_log(message):
+    # Get current date and time
+    current_date = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
+    # Get user input
+    user_input = input(message + ": ")
+    # Format message with current date
+    message_with_date = f"[{current_date}] {user_input}\n"
+    return message_with_date
+
+
 if __name__ == "__main__":
+
+
+    # Prompt user for input with a message
+    user_message = get_msg_for_exp_log("Enter info for experiment log")
+
+    # Write the message to a file
+    with open("/home/Imatge/projects/reverb-match-cond-u-net/experiment_log.txt", "a") as file:
+        file.write(user_message)
 
     # load default arguments
     args = Options().parse()
@@ -47,7 +66,7 @@ if __name__ == "__main__":
 
     # Conditions of the experiment
     cond_trasf_type = ["many-to-many"]
-    cond_losses=["stft+rev+emb"]
+    cond_losses=["early+late+emb"]
     cond_alphas=[[1,1,1]]
 
     # Conditions combinations list
@@ -97,20 +116,19 @@ if __name__ == "__main__":
         args.losstype=loss
         args.loss_alphas=alphas
 
-        # # create training tag based on date and params
-        # date_tag = datetime.now().strftime("%d-%m-%Y--%H-%M")
-        # loss_tag = "_"+ loss
-        # transf_tag="_"+ transf_type
-        # alpha_tag="_"+ '_'.join(map(str, alphas))
-        # tag=date_tag+transf_tag+loss_tag+alpha_tag
+        # create training tag based on date and params
+        date_tag = datetime.now().strftime("%d-%m-%Y--%H-%M")
+        loss_tag = "_"+ loss
+        transf_tag="_"+ transf_type
+        alpha_tag="_"+ '_'.join(map(str, alphas))
+        tag=date_tag+transf_tag+loss_tag+alpha_tag
+        # prepare diectory for this training combination
+        args.savedir=os.path.join(runexp_savepath,tag) 
 
-        # # prepare diectory for this training combination
-        # args.savedir=os.path.join(runexp_savepath,tag) 
-
-        # resume training 
-        args.savedir="/home/Imatge/media/ssd2/RESULTS-reverb-match-cond-u-net/runs-exp-19-02-2024/19-02-2024--14-58_many-to-many_stft+rev+emb_1_1_1"
-        args.resume_checkpoint="checkpointbest.pt"
-        args.resume_tboard=args.savedir
+        # # resume training 
+        # args.savedir="/home/Imatge/media/ssd2/RESULTS-reverb-match-cond-u-net/runs-exp-19-02-2024/19-02-2024--14-58_many-to-many_stft+rev+emb_1_1_1"
+        # args.resume_checkpoint="checkpointbest.pt"
+        # args.resume_tboard=args.savedir
 
         # train with current parameters
         new_experiment=cond_waveunet_trainer.Trainer(args)

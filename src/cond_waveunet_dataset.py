@@ -93,9 +93,9 @@ class DatasetReverbTransfer(Dataset):
         # scale data but preserve symmetry
         s1r1n1=hlp.torch_standardize_max_abs(s1r1n1) # Reverberant content sound
         s2r2n2=hlp.torch_standardize_max_abs(s2r2n2) # Style sound
-        s1r2_early=hlp.torch_standardize_max_abs(s1r2_early) # Target early part
-        s1r2_late=hlp.torch_standardize_max_abs(s1r2_late) # Target late part
-        s1r2=hlp.torch_standardize_max_abs(s1r2_early+s1r2_late) # Target all
+        s1r2, sc_max=hlp.torch_standardize_max_abs(s1r2_early+s1r2_late,out=True) # Target all
+        s1r2_early=s1r2_early/sc_max
+        s1r2_late=s1r2_late/sc_max
         # s1r2=hlp.torch_standardize_max_abs(s1r2) # Target
         # s2r1=hlp.torch_standardize_max_abs(s2r1) # "Flipped" target
         s1=hlp.torch_standardize_max_abs(s1) # Anechoic content sound

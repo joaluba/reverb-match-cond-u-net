@@ -28,7 +28,7 @@ class Options():
 
         # general arguments
         parser.add_argument('--projectdir', default="/home/Imatge/projects/reverb-match-cond-u-net/", type=str)
-        parser.add_argument('--savedir', default="/media/ssd2/RESULTS-reverb-match-cond-u-net/new_experiment", type=str)
+        parser.add_argument('--savedir', default="/media/ssd2/RESULTS-reverb-match-cond-u-net/", type=str)
         parser.add_argument('--device', default="cuda", type=str)
         parser.add_argument('--fs', default=48000, type=int)
 
@@ -45,8 +45,8 @@ class Options():
                             default="/home/Imatge/projects/reverb-match-cond-u-net/dataset-metadata/nonoise2_dacom.csv" , type=str)
 
         # training arguments
-        parser.add_argument('--num_epochs', default=300, type=int)
-        parser.add_argument('--checkpoint_step', default=20, type=int)
+        parser.add_argument('--num_epochs', default=3, type=int)
+        parser.add_argument('--checkpoint_step', default=1, type=int)
         parser.add_argument('--batch_size', default=8, type=int)
         parser.add_argument('--learn_rate', default=1e-4, type=float)
         parser.add_argument('--optimizer', default="adam", type=str) # see below
