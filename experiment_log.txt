@@ -13,3 +13,32 @@
 [2024-03-18-16:42:43] test ins2
 [2024-03-18-16:44:58] text ins2
 [2024-03-18-16:47:19] test ins2
+[2024-03-18-17:56:30] pilot for symmetric film and early/late reverb
+[2024-03-18-17:57:14] same
+[2024-03-18-17:57:41] same
+[2024-03-18-17:58:37] same
+[2024-03-18-18:02:53] same
+[2024-03-18-18:04:54] same
+[2024-03-18-18:06:34] logaudio to tensorflow has hardcoded indices of examples to use
+[2024-03-18-18:15:55] same 
+[2024-03-18-18:19:13] same, updated pilot dataset so it has validation split
+[2024-03-18-18:20:22] same
+[2024-03-19-09:52:27] corrected: alphas should not be in the combinations
+[2024-03-19-09:53:39] same
+[2024-03-19-09:55:08] same
+[2024-03-19-09:55:41] same
+[2024-03-19-09:58:44] pilot restart
+[2024-03-19-10:27:12] big pilot (30 epochs with the full data set) 
+[2024-03-20-11:52:05] valloss vs VALSTFT loss - in tensorboard they are the same 
+[2024-03-20-11:54:34] same
+[2024-03-20-11:59:11] same
+[2024-03-20-12:11:48] same
+[2024-03-20-12:51:57] checking how arguments are stored
+[2024-03-20-18:27:09] extended pilot (100 epochs) for symmetric film and early/late loss 
+[2024-03-25-12:43:48] stft+early+late did not work out well, trying another combination of alphas. emb loss helped a bit, trying it with stft loss only 
+[2024-03-27-13:39:35] early/late reflections did not help - testing only late reflections regularizer and also additional logmel loss which from roc curves appears to be the most sensitive to reverb
+[2024-03-28-17:53:14] pilot long training with new val losses 
+[2024-03-28-19:33:28] same
+[2024-03-28-19:34:30] same
+[2024-03-28-19:35:08] same
+[2024-03-28-19:41:28] long training stft, logmel and stft + logmel

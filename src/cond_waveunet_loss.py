@@ -194,14 +194,21 @@ class LossOfChoice(torch.nn.Module):
         self.load_criterions(args.device)
 
     def load_criterions(self,device):
-        if self.losstype=="stft" or self.losstype=="stft+rev" or self.losstype=="rev" or self.losstype=="early+late" or self.losstype=="stft+early+late":
+        if self.losstype=="stft" or self.losstype=="early" or self.losstype=="late"  or self.losstype=="stft+rev" or self.losstype=="rev" or self.losstype=="early+late" or self.losstype=="stft+early+late":
             self.criterion_audio=MultiResolutionSTFTLoss().to(device)
+
+        elif self.losstype=="logmel":
+            self.criterion_audio=LogMelSpectrogramLoss().to(device)
+        
+        elif self.losstype=="stft+logmel":
+            self.criterion1_audio=MultiResolutionSTFTLoss().to(device)
+            self.criterion2_audio=LogMelSpectrogramLoss().to(device)
 
         elif self.losstype=="stft+emb":
             self.criterion_audio=MultiResolutionSTFTLoss().to(device)
             self.criterion_emb=torch.nn.CosineSimilarity(dim=2,eps=1e-8).to(device)
 
-        elif self.losstype=="stft+rev+emb" or self.losstype=="early+late+emb":
+        elif self.losstype=="stft+rev+emb" or self.losstype=="stft+early+late+emb":
             self.criterion_audio=MultiResolutionSTFTLoss().to(device)
             self.criterion_emb=torch.nn.CosineSimilarity(dim=2,eps=1e-8).to(device)
         
@@ -238,6 +245,18 @@ class LossOfChoice(torch.nn.Module):
             L=[L_rev]
             L_names=["L_rev"]
 
+        elif self.losstype=="late":
+            L_sc_late, L_mag_late = self.criterion_audio(sTarget.squeeze(1)-sAnecho.squeeze(1), sPrediction.squeeze(1)-sAnecho.squeeze(1))
+            L_late= L_sc_late + L_mag_late 
+            L=[L_late]
+            L_names=["L_late"]
+
+        elif self.losstype=="early":
+            L_sc_early, L_mag_early= self.criterion_audio(sTarget.squeeze(1)-sAnecho.squeeze(1), sPrediction.squeeze(1)-sAnecho.squeeze(1))
+            L_early= L_sc_early + L_mag_early
+            L=[L_early]
+            L_names=["L_early"]
+
         elif self.losstype=="stft+rev":
             L_sc_rev, L_mag_rev = self.criterion_audio(sTarget.squeeze(1)-sAnecho.squeeze(1), sPrediction.squeeze(1)-sAnecho.squeeze(1))
             L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
@@ -255,6 +274,18 @@ class LossOfChoice(torch.nn.Module):
             L=[L_stft, L_emb]
             L_names=["L_stft", "L_emb"]
 
+        elif self.losstype=="stft+logmel":
+            L_sc, L_mag = self.criterion1_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
+            L_stft=L_sc + L_mag
+            L_logmel = self.criterion2_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
+            L=[L_stft, L_logmel]
+            L_names=["L_stft", "L_logmel"]
+
+        elif self.losstype=="logmel":
+            L_logmel = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
+            L=[L_logmel]
+            L_names=["L_logmel"]
+
         elif self.losstype=="stft+rev+emb":
             # get the embedding of the prediction
             embTarget=model_reverbenc(sTarget)
@@ -269,19 +300,18 @@ class LossOfChoice(torch.nn.Module):
             with open("losses.txt", 'a') as file:
                 file.write(f"{L_stft} {L_rev} {L_emb}\n")
 
-        elif self.losstype=="early+late+emb":
+        elif self.losstype=="stft+early+late+emb":
             # get the embedding of the prediction
             embTarget=model_reverbenc(sTarget)
+            L_sc_stft, L_mag_stft = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
             L_sc_early, L_mag_early = self.criterion_audio(hlp.torch_standardize_max_abs(sTarget.squeeze(1)-sLate.squeeze(1)), hlp.torch_standardize_max_abs(sPrediction.squeeze(1)-sLate.squeeze(1)))
             L_sc_late, L_mag_late = self.criterion_audio(hlp.torch_standardize_max_abs(sTarget.squeeze(1)-sEarly.squeeze(1)), hlp.torch_standardize_max_abs(sPrediction.squeeze(1)-sEarly.squeeze(1)))
-            L_early=L_sc_early+L_mag_early
-            L_late=L_sc_late+L_mag_late
+            L_stft = L_sc_stft + L_mag_stft
+            L_early = L_sc_early+L_mag_early
+            L_late = L_sc_late+L_mag_late
             L_emb=(1-((torch.mean(self.criterion_emb(embStyle,embTarget))+ 1) / 2))
-            L = [L_early, L_late, L_emb]
-            L_names=["L_early", "L_late", "L_emb"]
-            # Append the losses to the text file
-            with open("losses.txt", 'a') as file:
-                file.write(f"{L_early} {L_late} {L_emb}\n")
+            L = [L_stft, L_early, L_late, L_emb]
+            L_names=["L_stft", "L_early", "L_late", "L_emb"]
         
         elif self.losstype=="early+late":
             L_sc_early, L_mag_early = self.criterion_audio(hlp.torch_standardize_max_abs(sTarget.squeeze(1)-sLate.squeeze(1)), hlp.torch_standardize_max_abs(sPrediction.squeeze(1)-sLate.squeeze(1)))

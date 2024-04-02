@@ -32,8 +32,17 @@ def compute_ir_stats(filename,bands):
 
 def cut_or_zeropad(sig_in, len_smpl):
     if sig_in.shape[1]<len_smpl:
-        sig_out = torch.zeros(1, int(len_smpl))
+        sig_out = torch.zeros(sig_in.shape[0], int(len_smpl))
         sig_out[:,:sig_in.shape[1]] = sig_in
+    else:
+        sig_out=sig_in[:,:int(len_smpl)]
+    return sig_out
+
+def cut_or_rep(sig_in, len_smpl):
+    if sig_in.shape[1]<len_smpl:
+        repetitions = len_smpl // sig_in.shape[1]
+        remainder = len_smpl % sig_in.shape[1]
+        sig_out = torch.cat((sig_in.repeat(1,repetitions),sig_in[:,:remainder]),dim=1)
     else:
         sig_out=sig_in[:,:int(len_smpl)]
     return sig_out
@@ -215,6 +224,7 @@ def random_srcrec_in_room(room_x,room_y,room_z):
     np.array(mic_pos)
     # source position always the same in reference to mic (close-mic):
     src_pos = place_on_circle(np.array([mic_pos[0],mic_pos[1],mic_pos[2]]),0.1,0)
+    
     return mic_pos,src_pos
 
 

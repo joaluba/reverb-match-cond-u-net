@@ -35,6 +35,7 @@ class Options():
         # data and model parameters
         parser.add_argument('--sig_len', default=98304, type=int)
         parser.add_argument('--enc_len', default=512, type=int)
+        parser.add_argument('--gauss_len', default=3, type=int)
         parser.add_argument('--n_layers_revenc', default=8, type=int)
         parser.add_argument('--n_layers_waveunet', default=12, type=int)
 
@@ -42,11 +43,11 @@ class Options():
         parser.add_argument('--style_rir', default="/home/ubuntu/Data/ACE-Single/Lecture_Room_1/1/Single_508_1_RIR.wav", type=str)
         parser.add_argument('--content_rir', default=None, type=str)
         parser.add_argument('--df_metadata', 
-                            default="/home/ubuntu/joanna/reverb-match-cond-u-net/dataset-metadata/nonoise2_48kHz_guestxr_pilot.csv" , type=str)
+                            default="/home/ubuntu/joanna/reverb-match-cond-u-net/dataset-metadata/nonoise_48khz_guestxr.csv" , type=str)
 
         # training arguments
-        parser.add_argument('--num_epochs', default=3, type=int)
-        parser.add_argument('--checkpoint_step', default=1, type=int)
+        parser.add_argument('--num_epochs', default=400, type=int)
+        parser.add_argument('--checkpoint_step', default=20, type=int)
         parser.add_argument('--batch_size', default=8, type=int)
         parser.add_argument('--learn_rate', default=1e-4, type=float)
         parser.add_argument('--optimizer', default="adam", type=str) # see below
@@ -95,6 +96,7 @@ class OptionsEval():
         parser.add_argument('--eval_split', default="test", type=str)
         parser.add_argument('--rt60diffmin', default=-3, type=float)
         parser.add_argument('--rt60diffmax', default=3, type=float)
+        parser.add_argument('--N_datapoints', default=1000, type=int)
         parser.add_argument('--train_results_file', 
                             default="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/18-01-2024--00-56_many-to-many_stft/checkpoint_best.pt", type=str)
         parser.add_argument('--eval_tag', default="18-01-2024--00-56_many-to-many_stft", type=str)

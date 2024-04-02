@@ -66,20 +66,19 @@ if __name__ == "__main__":
 
     # Conditions of the experiment
     cond_trasf_type = ["many-to-many"]
-    cond_losses=["early+late", "stft","stft+early+late"]
-    cond_alphas=[[1,1],[1],[1,1,1]]
+    cond_losses=["stft+logmel","stft","logmel"]
+    cond_alphas=[[1,1],[1],[1]]
 
     # Conditions combinations list
     from itertools import product
 
     # Generate all combinations
     cond_combinations = []
-    for combo in product(cond_trasf_type, cond_losses, cond_alphas):
+    for combo in product(cond_trasf_type, cond_losses):
         combination_dict = {
             'cond_trasf_type': combo[0],
-            'cond_losses': combo[1],
-            'cond_alphas': combo[2]
-        }
+            'cond_losses': combo[1]
+            }
         cond_combinations.append(combination_dict)
 
     # Create folder for storing results of this experiment
@@ -93,12 +92,12 @@ if __name__ == "__main__":
     lines=exp_combinations_to_file(cond_combinations,condfilepath)
 
     cond_count=0
-    for i, combination in enumerate(cond_combinations, start=1):
+    for i, combination in enumerate(cond_combinations, start=0):
 
         # prepare params for this combination
         loss=combination["cond_losses"]
         transf_type=combination["cond_trasf_type"]
-        alphas=combination["cond_alphas"]
+        alphas=cond_alphas[i]
 
         if transf_type=="one-to-many":
             args.content_rir="anechoic"

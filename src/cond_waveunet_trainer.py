@@ -33,7 +33,11 @@ class Trainer(torch.nn.Module):
         # load stft loss as a validation loss for all conditions
         args_tmp=args
         args_tmp.losstype="stft"
-        self.criterion_val=cond_waveunet_loss.LossOfChoice(args_tmp).to(args.device)
+        self.criterion_val1=cond_waveunet_loss.LossOfChoice(args_tmp).to(args.device)
+        args_tmp.losstype="logmel"
+        self.criterion_val2=cond_waveunet_loss.LossOfChoice(args_tmp).to(args.device)
+        args_tmp.losstype="early"
+        self.criterion_val3=cond_waveunet_loss.LossOfChoice(args_tmp).to(args.device)
 
         # ---- DATASETS: ----
         args.split="train"
@@ -82,7 +86,8 @@ class Trainer(torch.nn.Module):
         
     def logaudio_tboard(self,writer):
         with torch.no_grad():
-            chosen_idx=[9372,49836,7247,9950,473]
+            chosen_idx=[122,1071,1175,1574,2621,37,267,706,822,1590]
+            # chosen_idx=[1,2]
             for i in range(0,len(chosen_idx)):
                 data=self.trainset[chosen_idx[i]]
                 data = [data[i].unsqueeze(0) for i in range(len(data))]
@@ -130,7 +135,7 @@ class Trainer(torch.nn.Module):
                 for i in range(0,len(loss_vals)):
                     loss_term=self.args.loss_alphas[i]*loss_vals[i]
                     loss+=loss_term
-                    self.writer.add_scalar(loss_names[i], loss_term.item(), epoch * len(self.trainloader) + j) # tensorboard
+                    # self.writer.add_scalar(loss_names[i], loss_term.item(), epoch * len(self.trainloader) + j) # tensorboard
                     
 
                 # empty gradient
@@ -159,10 +164,14 @@ class Trainer(torch.nn.Module):
             self.model_reverbenc.eval()
             with torch.no_grad():
                 val_loss=0
+                stft_loss=0
+                logmel_loss=0
+                early_loss=0
+                late_loss=0
                 for j,data in tqdm(enumerate(self.valloader),total = len(self.valloader)):
                                 
                     # infer and compute loss
-                    loss_vals,loss_names==self.criterion(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
+                    loss_vals,loss_names=self.criterion(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
                     # log and sum all loss terms
                     loss=0
                     for i in range(0,len(loss_vals)):
@@ -173,9 +182,20 @@ class Trainer(torch.nn.Module):
                     # compute loss for the current batch
                     val_loss += loss.item()  
                     
-                    # apart from regular validation loss, compute stft loss to easily compare between the conditions
-                    loss_vals,_ = self.criterion_val(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
-                    stft_loss += loss_vals[0].item()
+                    # apart from regular validation loss, compute additional losses
+                    # to easily compare between the conditions
+                    stft_vals_stft,_ = self.criterion_val1(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
+                    stft_loss += stft_vals_stft[0].item()
+
+                    logmel_vals,_ = self.criterion_val2(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
+                    logmel_loss += logmel_vals[0].item()
+
+                    early_vals,_ = self.criterion_val3(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
+                    early_loss += early_vals[0].item()
+                    
+                    late_vals,_ = self.criterion_val3(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
+                    late_loss += late_vals[0].item()
+
                     
 
             # Print stats at the end of the epoch
@@ -184,12 +204,18 @@ class Trainer(torch.nn.Module):
             avg_train_loss = train_loss / num_samples_train
             avg_val_loss = val_loss / num_samples_val
             avg_stft_loss =stft_loss/num_samples_val
+            avg_logmel_loss =logmel_loss/num_samples_val
+            avg_early_loss =early_loss/num_samples_val
+            avg_late_loss =late_loss/num_samples_val
             print(f'Epoch: {epoch}, Train. Loss: {avg_train_loss:.5f}, Val. Loss: {avg_val_loss:.5f}')
             self.loss_evol.append((avg_train_loss,avg_val_loss)) 
 
             self.writer.add_scalar('TrainLoss', avg_train_loss, epoch) # tensorboard
             self.writer.add_scalar('ValLoss', avg_val_loss, epoch) # tensorboard
-            self.writer.add_scalar('VAL_STFT'+ avg_stft_loss, epoch) # tensorboard
+            self.writer.add_scalar('VAL_STFT',avg_stft_loss, epoch) # tensorboard
+            self.writer.add_scalar('VAL_LOGMEL',avg_logmel_loss, epoch) # tensorboard
+            self.writer.add_scalar('VAL_EARLY',avg_early_loss, epoch) # tensorboard
+            self.writer.add_scalar('VAL_LATE',avg_late_loss, epoch) # tensorboard
             
             # Save checkpoint (overwrite)
             if (bool(self.args.store_outputs)) & (epoch % self.args.checkpoint_step ==0):

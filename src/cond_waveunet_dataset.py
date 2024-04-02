@@ -83,8 +83,8 @@ class DatasetReverbTransfer(Dataset):
         # s2r1 = torch.from_numpy(scipy.signal.fftconvolve(s2, r1,mode="full"))[:,:self.sig_len]
 
         # Add noise to signals
-        snr1=df_pair["snr"][0]
-        snr2=df_pair["snr"][1]
+        # snr1=df_pair["snr"][0]
+        # snr2=df_pair["snr"][1]
         # s1r1n1=hlp.torch_mix_and_set_snr(s1r1,n1,snr1)
         # s2r2n2=hlp.torch_mix_and_set_snr(s2r2,n2,snr2)
         s1r1n1=s1r1
@@ -127,31 +127,6 @@ class DatasetReverbTransfer(Dataset):
 
         return df
 
-    def get_rirs(self,index):
-        # Pick pair of signals from metadata:
-        df_pair=self.df_ds[self.df_ds["pair_idx"]==index]
-        df_pair=df_pair.reset_index()
-
-        if self.content_ir is None:
-            r1 = hlp.torch_load_mono(df_pair["ir_file_path"][0],self.fs)
-            r1b=r1
-        elif self.content_ir=="anechoic":
-            r1 = torch.cat((torch.tensor([[1.0]]), torch.zeros((1,self.fs-1))),1)
-            r1b=r1
-        else: 
-            r1 = hlp.torch_load_mono(self.content_ir,self.fs)
-            r1b =hlp.render_random_rir(df_pair["room_x"],df_pair["room_y"],df_pair["room_z"],df_pair["rt60_set"])
-
-        if self.style_ir is None:
-            r2 = hlp.torch_load_mono(df_pair["ir_file_path"][1],self.fs)
-        else: 
-            r2 = hlp.torch_load_mono(self.style_ir,self.fs)
-        
-        return r1,r2,r1b
-
-            
-        
-
 
     def get_item_test(self,index):
                 # Pick pair of signals from metadata:
@@ -182,13 +157,14 @@ class DatasetReverbTransfer(Dataset):
 
         if self.content_ir is None:
             r1 = hlp.torch_load_mono(df_pair["ir_file_path"][0],self.fs)
-            r1b=r1
+            r1b_array =hlp.render_random_rir(df_pair["room_x"][0],df_pair["room_y"][0],df_pair["room_z"][0],df_pair["rt60_set"][0])
+            r1b= torch.tensor(r1b_array.T).squeeze(0).float()
         elif self.content_ir=="anechoic":
             r1 = torch.cat((torch.tensor([[1.0]]), torch.zeros((1,self.fs-1))),1)
             r1b=r1
         else: 
             r1 = hlp.torch_load_mono(self.content_ir,self.fs)
-            r1b =hlp.render_random_rir(df_pair["room_x"],df_pair["room_y"],df_pair["room_z"],df_pair["rt60_set"])
+            r1b =r1
 
             
         if self.style_ir is None:
@@ -196,27 +172,69 @@ class DatasetReverbTransfer(Dataset):
         else: 
             r2 = hlp.torch_load_mono(self.style_ir,self.fs)
 
-        # Convolve signals with impulse responses
-        s1r1 = torch.from_numpy(scipy.signal.fftconvolve(s1, r1,mode="full"))[:,:self.sig_len]
+
+        # separate style rir into early and late 
+        cutpoint_ms=50
+        r2_early, r2_late = hlp.rir_split_earlylate(r2,self.fs,cutpoint_ms)
+        r1_early, r1_late = hlp.rir_split_earlylate(r1,self.fs,cutpoint_ms)
+        r1b_early, r1b_late = hlp.rir_split_earlylate(r1b,self.fs,cutpoint_ms)
+
+
+        # content a
+        s1r1_early = torch.from_numpy(scipy.signal.fftconvolve(s1, r1_early,mode="full"))[:,:self.sig_len]
+        s1r1_late = torch.from_numpy(scipy.signal.fftconvolve(s1, r1_late,mode="full"))[:,:self.sig_len]
+        s1r1, sc_max=hlp.torch_standardize_max_abs(s1r1_early+s1r1_late,out=True) # Target all
+        s1r1_early=s1r1_early/sc_max
+        s1r1_late=s1r1_late/sc_max
+
+        # content b
+        s1r1b_early = torch.from_numpy(scipy.signal.fftconvolve(s1, r1b_early,mode="full"))[:,:self.sig_len]
+        s1r1b_late = torch.from_numpy(scipy.signal.fftconvolve(s1, r1b_late,mode="full"))[:,:self.sig_len]
+        s1r1b, sc_max=hlp.torch_standardize_max_abs(s1r1b_early+s1r1b_late,out=True) # Target all
+        s1r1b_early=s1r1b_early/sc_max
+        s1r1b_late=s1r1b_late/sc_max
+
+        # target
+        s1r2_early = torch.from_numpy(scipy.signal.fftconvolve(s1, r2_early,mode="full"))[:,:self.sig_len]
+        s1r2_late = torch.from_numpy(scipy.signal.fftconvolve(s1, r2_late,mode="full"))[:,:self.sig_len]
+        s1r2, sc_max=hlp.torch_standardize_max_abs(s1r2_early+s1r2_late,out=True) # Target all
+        s1r2_early=s1r2_early/sc_max
+        s1r2_late=s1r2_late/sc_max
+
+        # style
         s2r2 = torch.from_numpy(scipy.signal.fftconvolve(s2, r2,mode="full"))[:,:self.sig_len]
-        s1r2 = torch.from_numpy(scipy.signal.fftconvolve(s1, r2,mode="full"))[:,:self.sig_len]
         s2r1 = torch.from_numpy(scipy.signal.fftconvolve(s2, r1,mode="full"))[:,:self.sig_len]
-        s1r1b = torch.from_numpy(scipy.signal.fftconvolve(s1, r1b,mode="full"))[:,:self.sig_len]
-
-        # Add noise to signals
-        snr1=df_pair["snr"][0]
-        snr2=df_pair["snr"][1]
-        # s1r1n1=hlp.torch_mix_and_set_snr(s1r1,n1,snr1)
-        # s2r2n2=hlp.torch_mix_and_set_snr(s2r2,n2,snr2)
-        s1r1n1=s1r1
-        s2r2n2=s2r2
-
-        # scale data but preserve symmetry
-        s1r1n1=hlp.torch_standardize_max_abs(s1r1n1) # Reverberant content sound
-        s2r2n2=hlp.torch_standardize_max_abs(s2r2n2) # Style sound
-        s1r2=hlp.torch_standardize_max_abs(s1r2) # Target
+        s2r2=hlp.torch_standardize_max_abs(s2r2) # Style sound
         s2r1=hlp.torch_standardize_max_abs(s2r1) # "Flipped" target
-        s1=hlp.torch_standardize_max_abs(s1) # Anechoic content sound
-        s1r1b=hlp.torch_standardize_max_abs(s1r1b) # Reverberant signal from the same room as content (but different position)
 
-        return s1r1n1, s2r2n2, s1r2, s1, s2r1, s2, s1r1b
+        # Anechoic  sounds
+        s1=hlp.torch_standardize_max_abs(s1) 
+
+
+        signals={
+            "s1r1": s1r1,
+            "s1r1_early": s1r1_early,
+            "s1r1_late": s1r1_late,
+            "s1r1b": s1r1b,
+            "s1r1b_early": s1r1b_early,
+            "s1r1b_late": s1r1b_late,
+            "s1r2": s1r2,
+            "s1r2_early": s1r2_early,
+            "s1r2_late": s1r2_late,
+            "s2r2": s2r2,
+            "s2r1": s2r1,
+            "s1": s1,
+            "s2": s2,
+            }
+        
+        rirs={
+            "r1": r1,
+            "r1_early": r1_early,
+            "r1_late": r1_late,
+            "r2": r2,
+            "r2_early": r2_early,
+            "r2_late": r2_late,
+            "r1b": r1b,
+            }
+
+        return signals, rirs
