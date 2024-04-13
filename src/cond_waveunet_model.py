@@ -148,6 +148,7 @@ class waveunet(nn.Module):
         self.n_layers = args.n_layers_waveunet
         self.z_channels = args.enc_len 
         self.channels_interval = 24
+        self.symmetric_film = bool(args.symmetric_film)
         # encoder:
         encoder_in_channels_list = [1] + [i * self.channels_interval for i in range(1, self.n_layers)]
         # [1, 24, 48, 72, 96, 120, 144, 168, 192, 216, 240, 264]
@@ -238,6 +239,7 @@ class varwaveunet(nn.Module):
         self.z_channels = args.enc_len 
         self.h_channels = args.gauss_len 
         self.channels_interval = 24
+        self.symmetric_film = bool(args.symmetric_film)
         # encoder:
         encoder_in_channels_list = [1] + [int(i * self.channels_interval) for i in range(1, self.n_layers)]
         # [1, 24, 48, 72, 96, 120, 144, 168, 192, 216, 240, 264]
@@ -283,32 +285,30 @@ class varwaveunet(nn.Module):
         self.decoder_input = nn.Linear(self.h_channels,encoder_out_channels_list[-1])
         self.unflatten = nn.Conv1d(1,24,kernel_size=1, stride=1, padding=0)
 
-
-
         # final output layer:
         self.out = nn.Sequential(
             nn.Conv1d(1 + self.channels_interval, 1, kernel_size=1, stride=1),
             nn.Tanh()
         )
     
-    def reparameterize(self, mu, var):
+    def reparameterize(self, mu, log_var):
         # Reparameterization takes in the input mu and logVar 
         # and samples the mu + std * eps
-        std = torch.exp(var/2)
+        std = torch.exp(log_var/2)
         eps = torch.randn_like(std)
         return mu + std * eps
     
-    # def myflatten(self,x):
-    #     x_dims=x.shape
-    #     n_batches=x_dims[0]
-    #     unflat_dims=x_dims[1:]
-    #     x=x.view(n_batches, -1)
-    #     return x, unflat_dims
+    def myflatten(self,x):
+        x_dims=x.shape
+        n_batches=x_dims[0]
+        unflat_dims=x_dims[1:]
+        x=x.view(n_batches, -1)
+        return x, unflat_dims
         
-    # def myunflatten(self,x,unflat_dims):
-    #     dim_final_unflat= tuple([x.size(0)])+tuple(unflat_dims)
-    #     x=x.view(dim_final_unflat)
-    #     return x
+    def myunflatten(self,x,unflat_dims):
+        dim_final_unflat= tuple([x.size(0)])+tuple(unflat_dims)
+        x=x.view(dim_final_unflat)
+        return x
 
     def forward(self, x, z_enc,z_dec):
         # x - input waveform
@@ -337,9 +337,9 @@ class varwaveunet(nn.Module):
         # generate mean and standard deviation 
         # (from z_channels to h_channels)
         mu = self.fc_mu(o)
-        var = self.fc_var(o)
+        log_var = self.fc_var(o)
         # generate a sample from gaussian noise
-        o = self.reparameterize(mu, var)
+        o = self.reparameterize(mu, log_var)
         # go from h_channels to z_channels
         o = self.decoder_input(o)
         # unflatten the output of the previous layer:
@@ -361,7 +361,7 @@ class varwaveunet(nn.Module):
         o = torch.cat([o, x], dim=1)
         # final layer with tanh activation
         o = self.out(o)
-        return o
+        return o, mu, log_var
     
 
 

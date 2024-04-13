@@ -65,9 +65,13 @@ if __name__ == "__main__":
 
 
     # Conditions of the experiment
+    
     cond_trasf_type = ["many-to-many"]
-    cond_losses=["stft+logmel","stft","logmel"]
-    cond_alphas=[[1,1],[1],[1]]
+    # cond_losses=["stft"]
+    # cond_alphas=[[1]]
+    cond_losses=["stft+vae", "stft"]
+    cond_alphas=[[1,1],[1]]
+    cond_is_vae=[1,0]
 
     # Conditions combinations list
     from itertools import product
@@ -112,6 +116,8 @@ if __name__ == "__main__":
             args.learn_rate = 1e-4
             args.batch_size = 8
 
+        args.symmetric_film=1
+        args.is_vae=cond_is_vae[i]
         args.losstype=loss
         args.loss_alphas=alphas
 

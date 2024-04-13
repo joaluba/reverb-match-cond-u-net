@@ -34,20 +34,24 @@ class Options():
 
         # data and model parameters
         parser.add_argument('--sig_len', default=98304, type=int)
+        # parser.add_argument('--content_sig_len', default=98304, type=int)
         parser.add_argument('--enc_len', default=512, type=int)
         parser.add_argument('--gauss_len', default=3, type=int)
         parser.add_argument('--n_layers_revenc', default=8, type=int)
         parser.add_argument('--n_layers_waveunet', default=12, type=int)
+        parser.add_argument('--is_vae', default=1, type=int)
+        parser.add_argument('--symmetric_film', default=1, type=int)
+
 
         # dataset parameters
         parser.add_argument('--style_rir', default="/home/ubuntu/Data/ACE-Single/Lecture_Room_1/1/Single_508_1_RIR.wav", type=str)
         parser.add_argument('--content_rir', default=None, type=str)
         parser.add_argument('--df_metadata', 
-                            default="/home/ubuntu/joanna/reverb-match-cond-u-net/dataset-metadata/nonoise_48khz_guestxr.csv" , type=str)
+                            default="/home/ubuntu/joanna/reverb-match-cond-u-net/dataset-metadata/nonoise_48khz_guestxr_pilot.csv" , type=str)
 
         # training arguments
-        parser.add_argument('--num_epochs', default=400, type=int)
-        parser.add_argument('--checkpoint_step', default=20, type=int)
+        parser.add_argument('--num_epochs', default=20, type=int)
+        parser.add_argument('--checkpoint_step', default=2, type=int)
         parser.add_argument('--batch_size', default=8, type=int)
         parser.add_argument('--learn_rate', default=1e-4, type=float)
         parser.add_argument('--optimizer', default="adam", type=str) # see below
@@ -91,7 +95,7 @@ class OptionsEval():
         parser.add_argument('--device', default="cuda", type=str)
         parser.add_argument('--batch_size_eval', default=16, type=int)
         parser.add_argument('--checkpoint_development', default=False, type=bool)
-        parser.add_argument('--eval_file_name', default="evaluation_metrics.csv", type=str)
+        parser.add_argument('--eval_file_name', default="eval_all.csv", type=str)
         parser.add_argument('--eval_dir', default="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/", type=str)
         parser.add_argument('--eval_split', default="test", type=str)
         parser.add_argument('--rt60diffmin', default=-3, type=float)

@@ -122,13 +122,13 @@ class DatasetReverbTransfer(Dataset):
             styleorcontent_idx=1
         elif id=="content":
             styleorcontent_idx=0
-
+ 
         df=df_pair.iloc[styleorcontent_idx]
 
         return df
 
 
-    def get_item_test(self,index):
+    def get_item_test(self,index, gen_rir_b=False):
                 # Pick pair of signals from metadata:
         df_pair=self.df_ds[self.df_ds["pair_idx"]==index]
         df_pair=df_pair.reset_index()
@@ -157,14 +157,13 @@ class DatasetReverbTransfer(Dataset):
 
         if self.content_ir is None:
             r1 = hlp.torch_load_mono(df_pair["ir_file_path"][0],self.fs)
-            r1b_array =hlp.render_random_rir(df_pair["room_x"][0],df_pair["room_y"][0],df_pair["room_z"][0],df_pair["rt60_set"][0])
-            r1b= torch.tensor(r1b_array.T).squeeze(0).float()
+            if gen_rir_b:
+                r1b_array =hlp.render_random_rir(df_pair["room_x"][0],df_pair["room_y"][0],df_pair["room_z"][0],df_pair["rt60_set"][0])
+                r1b= torch.tensor(r1b_array.T).squeeze(0).float()
         elif self.content_ir=="anechoic":
             r1 = torch.cat((torch.tensor([[1.0]]), torch.zeros((1,self.fs-1))),1)
-            r1b=r1
         else: 
             r1 = hlp.torch_load_mono(self.content_ir,self.fs)
-            r1b =r1
 
             
         if self.style_ir is None:
@@ -177,7 +176,8 @@ class DatasetReverbTransfer(Dataset):
         cutpoint_ms=50
         r2_early, r2_late = hlp.rir_split_earlylate(r2,self.fs,cutpoint_ms)
         r1_early, r1_late = hlp.rir_split_earlylate(r1,self.fs,cutpoint_ms)
-        r1b_early, r1b_late = hlp.rir_split_earlylate(r1b,self.fs,cutpoint_ms)
+        if gen_rir_b:
+            r1b_early, r1b_late = hlp.rir_split_earlylate(r1b,self.fs,cutpoint_ms)
 
 
         # content a
@@ -188,11 +188,12 @@ class DatasetReverbTransfer(Dataset):
         s1r1_late=s1r1_late/sc_max
 
         # content b
-        s1r1b_early = torch.from_numpy(scipy.signal.fftconvolve(s1, r1b_early,mode="full"))[:,:self.sig_len]
-        s1r1b_late = torch.from_numpy(scipy.signal.fftconvolve(s1, r1b_late,mode="full"))[:,:self.sig_len]
-        s1r1b, sc_max=hlp.torch_standardize_max_abs(s1r1b_early+s1r1b_late,out=True) # Target all
-        s1r1b_early=s1r1b_early/sc_max
-        s1r1b_late=s1r1b_late/sc_max
+        if gen_rir_b:
+            s1r1b_early = torch.from_numpy(scipy.signal.fftconvolve(s1, r1b_early,mode="full"))[:,:self.sig_len]
+            s1r1b_late = torch.from_numpy(scipy.signal.fftconvolve(s1, r1b_late,mode="full"))[:,:self.sig_len]
+            s1r1b, sc_max=hlp.torch_standardize_max_abs(s1r1b_early+s1r1b_late,out=True) # Target all
+            s1r1b_early=s1r1b_early/sc_max
+            s1r1b_late=s1r1b_late/sc_max
 
         # target
         s1r2_early = torch.from_numpy(scipy.signal.fftconvolve(s1, r2_early,mode="full"))[:,:self.sig_len]
@@ -210,31 +211,55 @@ class DatasetReverbTransfer(Dataset):
         # Anechoic  sounds
         s1=hlp.torch_standardize_max_abs(s1) 
 
-
-        signals={
-            "s1r1": s1r1,
-            "s1r1_early": s1r1_early,
-            "s1r1_late": s1r1_late,
-            "s1r1b": s1r1b,
-            "s1r1b_early": s1r1b_early,
-            "s1r1b_late": s1r1b_late,
-            "s1r2": s1r2,
-            "s1r2_early": s1r2_early,
-            "s1r2_late": s1r2_late,
-            "s2r2": s2r2,
-            "s2r1": s2r1,
-            "s1": s1,
-            "s2": s2,
-            }
+        if gen_rir_b:
+            signals={
+                "s1r1": s1r1,
+                "s1r1_early": s1r1_early,
+                "s1r1_late": s1r1_late,
+                "s1r1b": s1r1b,
+                "s1r1b_early": s1r1b_early,
+                "s1r1b_late": s1r1b_late,
+                "s1r2": s1r2,
+                "s1r2_early": s1r2_early,
+                "s1r2_late": s1r2_late,
+                "s2r2": s2r2,
+                "s2r1": s2r1,
+                "s1": s1,
+                "s2": s2,
+                }
+            
+            rirs={
+                "r1": r1,
+                "r1_early": r1_early,
+                "r1_late": r1_late,
+                "r2": r2,
+                "r2_early": r2_early,
+                "r2_late": r2_late,
+                "r1b": r1b,
+                }
         
-        rirs={
-            "r1": r1,
-            "r1_early": r1_early,
-            "r1_late": r1_late,
-            "r2": r2,
-            "r2_early": r2_early,
-            "r2_late": r2_late,
-            "r1b": r1b,
-            }
+        else:
+                     
+            signals={
+                "s1r1": s1r1,
+                "s1r1_early": s1r1_early,
+                "s1r1_late": s1r1_late,
+                "s1r2": s1r2,
+                "s1r2_early": s1r2_early,
+                "s1r2_late": s1r2_late,
+                "s2r2": s2r2,
+                "s2r1": s2r1,
+                "s1": s1,
+                "s2": s2,
+                }
+            
+            rirs={
+                "r1": r1,
+                "r1_early": r1_early,
+                "r1_late": r1_late,
+                "r2": r2,
+                "r2_early": r2_early,
+                "r2_late": r2_late,
+                }
 
         return signals, rirs

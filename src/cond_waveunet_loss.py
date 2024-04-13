@@ -46,13 +46,13 @@ def stft(x, fft_size, hop_size, win_length, window):
 
     """
     if is_pytorch_17plus:
-        x_stft = torch.stft(
-            x, fft_size, hop_size, win_length, window, return_complex=False
-        )
+        x_stft = torch.stft(x, fft_size, hop_size, win_length, window, return_complex=True)
+        real = x_stft.real
+        imag = x_stft.imag
     else:
         x_stft = torch.stft(x, fft_size, hop_size, win_length, window)
-    real = x_stft[..., 0]
-    imag = x_stft[..., 1]
+        real = x_stft[..., 0]
+        imag = x_stft[..., 1]
 
     # NOTE(kan-bayashi): clamp is needed to avoid nan or inf
     return torch.sqrt(torch.clamp(real**2 + imag**2, min=1e-7)).transpose(2, 1)
@@ -190,16 +190,22 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
 class LossOfChoice(torch.nn.Module):
     def __init__(self,args):
         super().__init__()
+        self.args=args
         self.losstype=args.losstype
         self.load_criterions(args.device)
+
 
     def load_criterions(self,device):
         if self.losstype=="stft" or self.losstype=="early" or self.losstype=="late"  or self.losstype=="stft+rev" or self.losstype=="rev" or self.losstype=="early+late" or self.losstype=="stft+early+late":
             self.criterion_audio=MultiResolutionSTFTLoss().to(device)
 
+        if self.losstype=="stft+vae":
+            self.criterion_audio=MultiResolutionSTFTLoss().to(device)
+            self.beta_schedule= [(i / (self.args.num_epochs/2)) if i < self.args.num_epochs/2 else 1 for i in range(self.args.num_epochs)]
+
         elif self.losstype=="logmel":
             self.criterion_audio=LogMelSpectrogramLoss().to(device)
-        
+
         elif self.losstype=="stft+logmel":
             self.criterion1_audio=MultiResolutionSTFTLoss().to(device)
             self.criterion2_audio=LogMelSpectrogramLoss().to(device)
@@ -219,7 +225,7 @@ class LossOfChoice(torch.nn.Module):
         else:
             print("this loss is not implemented")
 
-    def forward(self, data, model_waveunet, model_reverbenc, device):
+    def forward(self, epoch, data, model_waveunet, model_reverbenc, device):
         # get datapoint
         sContent_in = data[0].to(device) # s1r1 - content
         sStyle_in=data[1].to(device) # s2r2 - style
@@ -229,9 +235,15 @@ class LossOfChoice(torch.nn.Module):
         sLate=data[5].to(device) # s1r2_late - late reverb
         # sPositive=data[4].to(device) # s2r1
         # forward pass - get prediction of the ir
-        embContent=model_reverbenc(sContent_in)
         embStyle=model_reverbenc(sStyle_in)
+        if model_waveunet.symmetric_film:
+            embContent=model_reverbenc(sContent_in)
+        else:
+            embContent=embStyle
+
         sPrediction=model_waveunet(sContent_in,embContent,embStyle)
+        if bool(self.args.is_vae):
+            sPrediction, mu, log_var = sPrediction
 
         if self.losstype=="stft":
             L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
@@ -256,6 +268,15 @@ class LossOfChoice(torch.nn.Module):
             L_early= L_sc_early + L_mag_early
             L=[L_early]
             L_names=["L_early"]
+
+        elif self.losstype=="stft+vae":
+            L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
+            L_stft= L_sc+ L_mag 
+            L_vae = self.beta_schedule[epoch]-torch.sum(1+ log_var - mu.pow(2)- log_var.exp())
+
+            L=[L_stft,L_vae]
+            L_names=["L_stft","L_vae"]
+
 
         elif self.losstype=="stft+rev":
             L_sc_rev, L_mag_rev = self.criterion_audio(sTarget.squeeze(1)-sAnecho.squeeze(1), sPrediction.squeeze(1)-sAnecho.squeeze(1))

@@ -21,7 +21,11 @@ class Trainer(torch.nn.Module):
         # load reverb encoder
         self.model_reverbenc=cond_waveunet_model.ReverbEncoder(args).to(args.device)
         # laod waveunet 
-        self.model_waveunet=cond_waveunet_model.waveunet(args).to(args.device)
+        if bool(args.is_vae)==False:
+            self.model_waveunet=cond_waveunet_model.waveunet(args).to(args.device)
+        else:
+            self.model_waveunet=cond_waveunet_model.varwaveunet(args).to(args.device)
+
 
         # ---- OPTIMIZERS: ----
         if args.optimizer=="adam":
@@ -33,11 +37,13 @@ class Trainer(torch.nn.Module):
         # load stft loss as a validation loss for all conditions
         args_tmp=args
         args_tmp.losstype="stft"
-        self.criterion_val1=cond_waveunet_loss.LossOfChoice(args_tmp).to(args.device)
+        self.criterion_val_stft=cond_waveunet_loss.LossOfChoice(args_tmp).to(args.device)
         args_tmp.losstype="logmel"
-        self.criterion_val2=cond_waveunet_loss.LossOfChoice(args_tmp).to(args.device)
+        self.criterion_val_logmel=cond_waveunet_loss.LossOfChoice(args_tmp).to(args.device)
         args_tmp.losstype="early"
-        self.criterion_val3=cond_waveunet_loss.LossOfChoice(args_tmp).to(args.device)
+        self.criterion_val_early=cond_waveunet_loss.LossOfChoice(args_tmp).to(args.device)
+        args_tmp.losstype="late"
+        self.criterion_val_late=cond_waveunet_loss.LossOfChoice(args_tmp).to(args.device)
 
         # ---- DATASETS: ----
         args.split="train"
@@ -79,19 +85,31 @@ class Trainer(torch.nn.Module):
             sStyle_in=data[1].to(self.args.device)
             sTarget_gt=data[2].to(self.args.device)
             # forward pass - get prediction of the ir
-            embedding_enc=self.model_reverbenc(sContent_in)
             embedding_dec=self.model_reverbenc(sStyle_in)
+            if self.model_waveunet.symmetric_film: 
+                embedding_enc=self.model_reverbenc(sContent_in)
+            else:
+                embedding_enc=embedding_dec
+
             sTarget_prediction=self.model_waveunet(sContent_in,embedding_enc,embedding_dec)
             return sContent_in, sStyle_in, sTarget_gt, sTarget_prediction
+
+    def learn_rate_update(self,curr_epoch, step,factor,optimizer):
+        # Optionally, update the learning rate every 10 epochs
+        if (curr_epoch + 1) % step == 0:
+            for param_group in optimizer.param_groups:
+                param_group['lr'] *= factor                
         
     def logaudio_tboard(self,writer):
         with torch.no_grad():
             chosen_idx=[122,1071,1175,1574,2621,37,267,706,822,1590]
-            # chosen_idx=[1,2]
+            # chosen_idx=[1,2,3,4,5,6,7,8,9,10]
             for i in range(0,len(chosen_idx)):
                 data=self.trainset[chosen_idx[i]]
                 data = [data[i].unsqueeze(0) for i in range(len(data))]
                 _,_,sTarget_gt, sTarget_prediction=self.infer(data)
+                if bool(self.args.is_vae):
+                    sTarget_prediction, _, _ = sTarget_prediction
                 wave_target=sTarget_gt[0,:,:].squeeze(0)
                 wave_predict=sTarget_prediction[0,:,:].squeeze(0)
                 writer.add_audio(f'Target_dp{i}', wave_target/wave_target.abs().max(), torch.tensor(self.args.fs))
@@ -117,6 +135,11 @@ class Trainer(torch.nn.Module):
         start = time.time()
         for epoch in range(self.start_epoch,self.args.num_epochs):
 
+            # ----- Update learning rate: -----
+            self.learn_rate_update(epoch,10,0.5,self.optimizer_waveunet)
+            self.learn_rate_update(epoch,10,0.5,self.optimizer_reverbenc)
+            print(f"Epoch {epoch+1}: Learning Rate: {self.optimizer_waveunet.param_groups[0]['lr']}") 
+
             # ----- Training loop for this epoch: -----
             self.model_waveunet.train()
             self.model_reverbenc.train()
@@ -129,7 +152,7 @@ class Trainer(torch.nn.Module):
                 # print(f"Time to load data: {time.time() - end}")     
 
                 # infer and compute loss
-                loss_vals,loss_names=self.criterion(data, self.model_waveunet, self.model_reverbenc, self.args.device)
+                loss_vals,loss_names=self.criterion(epoch, data, self.model_waveunet, self.model_reverbenc, self.args.device)
                 # log and sum all loss terms
                 loss=0
                 for i in range(0,len(loss_vals)):
@@ -184,16 +207,16 @@ class Trainer(torch.nn.Module):
                     
                     # apart from regular validation loss, compute additional losses
                     # to easily compare between the conditions
-                    stft_vals_stft,_ = self.criterion_val1(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
+                    stft_vals_stft,_ = self.criterion_val_stft(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
                     stft_loss += stft_vals_stft[0].item()
 
-                    logmel_vals,_ = self.criterion_val2(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
+                    logmel_vals,_ = self.criterion_val_logmel(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
                     logmel_loss += logmel_vals[0].item()
 
-                    early_vals,_ = self.criterion_val3(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
+                    early_vals,_ = self.criterion_val_early(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
                     early_loss += early_vals[0].item()
                     
-                    late_vals,_ = self.criterion_val3(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
+                    late_vals,_ = self.criterion_val_late(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
                     late_loss += late_vals[0].item()
 
                     

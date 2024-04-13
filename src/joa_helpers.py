@@ -42,10 +42,10 @@ def cut_or_rep(sig_in, len_smpl):
     if sig_in.shape[1]<len_smpl:
         repetitions = len_smpl // sig_in.shape[1]
         remainder = len_smpl % sig_in.shape[1]
-        sig_out = torch.cat((sig_in.repeat(1,repetitions),sig_in[:,:remainder]),dim=1)
+        sig_in = torch.cat((sig_in.repeat(1,repetitions),sig_in[:,:remainder]),dim=1)
     else:
-        sig_out=sig_in[:,:int(len_smpl)]
-    return sig_out
+        sig_in=sig_in[:,:int(len_smpl)]
+    return sig_in
 
 def torch_standardize_std(sig_in):
     mu = torch.mean(sig_in)
@@ -66,7 +66,7 @@ def torch_standardize_max_abs(signal,out=False):
 
 def torch_resample_if_needed(audio,sr,sr_target):
     if sr!=sr_target:
-        audio=torchaudio.transforms.Resample(sr,sr_target)(audio)
+        audio=torchaudio.transforms.Resample(sr,sr_target)(audio.cpu())
     return audio
 
 
@@ -78,7 +78,7 @@ def get_nonsilent_frame(audio,L_win_samples):
         chosen_frame=sig_out
     else:
         E_rms=10*torch.log10(torch.sqrt(torch.mean(torch.square(audio))))
-        E_thresh=E_rms-5
+        E_thresh=E_rms
         E_frame=-100
         tries=0
         while E_frame<E_thresh:
