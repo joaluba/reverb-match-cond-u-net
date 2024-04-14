@@ -20,17 +20,17 @@ class Trainer(torch.nn.Module):
         # ---- MODELS: ----
         # load reverb encoder
         self.model_reverbenc=cond_waveunet_model.ReverbEncoder(args).to(args.device)
-        # laod waveunet 
+        # load waveunet 
         if bool(args.is_vae)==False:
-            self.model_waveunet=cond_waveunet_model.waveunet(args).to(args.device)
+            self.model_waveunet=cond_waveunet_model.waveunet(args)
         else:
-            self.model_waveunet=cond_waveunet_model.varwaveunet(args).to(args.device)
-
+            self.model_waveunet=cond_waveunet_model.varwaveunet(args)
+        # load combined model 
+        self.model_combined=cond_waveunet_model.CombinedModel(self.model_waveunet,self.model_reverbenc).to(args.device)
 
         # ---- OPTIMIZERS: ----
         if args.optimizer=="adam":
-            self.optimizer_waveunet =  torch.optim.AdamW(self.model_waveunet.parameters(), args.learn_rate)
-            self.optimizer_reverbenc =  torch.optim.AdamW(self.model_reverbenc.parameters(), args.learn_rate)
+            self.optimizer_combined =  torch.optim.AdamW(self.model_combined.parameters(), args.learn_rate)
 
         # ---- LOSS CRITERION: ----
         self.criterion=cond_waveunet_loss.LossOfChoice(args).to(args.device)
@@ -84,14 +84,7 @@ class Trainer(torch.nn.Module):
             sContent_in = data[0].to(self.args.device)
             sStyle_in=data[1].to(self.args.device)
             sTarget_gt=data[2].to(self.args.device)
-            # forward pass - get prediction of the ir
-            embedding_dec=self.model_reverbenc(sStyle_in)
-            if self.model_waveunet.symmetric_film: 
-                embedding_enc=self.model_reverbenc(sContent_in)
-            else:
-                embedding_enc=embedding_dec
-
-            sTarget_prediction=self.model_waveunet(sContent_in,embedding_enc,embedding_dec)
+            sTarget_prediction=self.model_combined(sContent_in,sStyle_in)
             return sContent_in, sStyle_in, sTarget_gt, sTarget_prediction
 
     def learn_rate_update(self,curr_epoch, step,factor,optimizer):
@@ -118,10 +111,8 @@ class Trainer(torch.nn.Module):
     def save_checkpoint(self,epoch,loss_evol,name):
         torch.save({
                     'epoch': epoch,
-                    'model_waveunet_state_dict': self.model_waveunet.state_dict(),
-                    'model_reverbenc_state_dict': self.model_reverbenc.state_dict(),
-                    'optimizer_waveunet_state_dict': self.optimizer_waveunet.state_dict(),
-                    'optimizer_reverbenc_state_dict': self.optimizer_reverbenc.state_dict(),
+                    'model_waveunet_state_dict': self.model_combined.state_dict(),
+                    'optimizer_condwaveunet_state_dict': self.optimizer_combined.state_dict(),
                     'loss': loss_evol,
                     }, os.path.join(self.args.savedir,'checkpoint' +name+'.pt'))
         
@@ -136,9 +127,8 @@ class Trainer(torch.nn.Module):
         for epoch in range(self.start_epoch,self.args.num_epochs):
 
             # ----- Update learning rate: -----
-            self.learn_rate_update(epoch,10,0.5,self.optimizer_waveunet)
-            self.learn_rate_update(epoch,10,0.5,self.optimizer_reverbenc)
-            print(f"Epoch {epoch+1}: Learning Rate: {self.optimizer_waveunet.param_groups[0]['lr']}") 
+            self.learn_rate_update(epoch,10,0.5,self.optimizer_combined)
+            print(f"Epoch {epoch+1}: Learning Rate: {self.optimizer_combined.param_groups[0]['lr']}") 
 
             # ----- Training loop for this epoch: -----
             self.model_waveunet.train()
@@ -152,7 +142,7 @@ class Trainer(torch.nn.Module):
                 # print(f"Time to load data: {time.time() - end}")     
 
                 # infer and compute loss
-                loss_vals,loss_names=self.criterion(epoch, data, self.model_waveunet, self.model_reverbenc, self.args.device)
+                loss_vals,loss_names=self.criterion(epoch, data, self.model_combined, self.args.device)
                 # log and sum all loss terms
                 loss=0
                 for i in range(0,len(loss_vals)):
@@ -162,13 +152,12 @@ class Trainer(torch.nn.Module):
                     
 
                 # empty gradient
-                self.optimizer_waveunet.zero_grad()
-                self.optimizer_reverbenc.zero_grad()
+                self.optimizer_combined.zero_grad()
+
                 # compute gradients 
                 loss.backward()
                 # update weights
-                self.optimizer_waveunet.step()
-                self.optimizer_reverbenc.step()
+                self.optimizer_combined.step()
                 # compute loss for the current batch
                 train_loss += loss.item()
 
@@ -183,8 +172,7 @@ class Trainer(torch.nn.Module):
                 # end = time.time()  
 
             # ----- Validation loop for this epoch: -----
-            self.model_waveunet.eval() 
-            self.model_reverbenc.eval()
+            self.model_combined.eval()
             with torch.no_grad():
                 val_loss=0
                 stft_loss=0
@@ -194,7 +182,7 @@ class Trainer(torch.nn.Module):
                 for j,data in tqdm(enumerate(self.valloader),total = len(self.valloader)):
                                 
                     # infer and compute loss
-                    loss_vals,loss_names=self.criterion(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
+                    loss_vals,loss_names=self.criterion(epoch, data, self.model_combined, self.args.device)   
                     # log and sum all loss terms
                     loss=0
                     for i in range(0,len(loss_vals)):
@@ -207,16 +195,16 @@ class Trainer(torch.nn.Module):
                     
                     # apart from regular validation loss, compute additional losses
                     # to easily compare between the conditions
-                    stft_vals_stft,_ = self.criterion_val_stft(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
+                    stft_vals_stft,_ = self.criterion_val_stft(epoch, data, self.model_combined, self.args.device)   
                     stft_loss += stft_vals_stft[0].item()
 
-                    logmel_vals,_ = self.criterion_val_logmel(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
+                    logmel_vals,_ = self.criterion_val_logmel(epoch, data, self.model_combined, self.args.device)   
                     logmel_loss += logmel_vals[0].item()
 
-                    early_vals,_ = self.criterion_val_early(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
+                    early_vals,_ = self.criterion_val_early(epoch, data, self.model_combined,  self.args.device)   
                     early_loss += early_vals[0].item()
                     
-                    late_vals,_ = self.criterion_val_late(data, self.model_waveunet, self.model_reverbenc, self.args.device)   
+                    late_vals,_ = self.criterion_val_late(epoch, data, self.model_combined, self.args.device)   
                     late_loss += late_vals[0].item()
 
                     

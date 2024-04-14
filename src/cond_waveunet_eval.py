@@ -27,6 +27,7 @@ class Evaluator(torch.nn.Module):
         super().__init__()
         self.args_test=args_test
         self.args_train=torch.load(self.args_test.train_args_file)
+        self.args_train.symmetric_film=self.args_test.symmetric_film
         # if we are on dacom we need to change the path of the dataset metadata (so far only this data was used)
         # self.args_train.df_metadata="/home/Imatge/projects/reverb-match-cond-u-net/dataset-metadata/nonoise2_dacom.csv"
         self.args_train.df_metadata="/home/ubuntu/joanna/reverb-match-cond-u-net/dataset-metadata/nonoise2_guestxr2.csv"

@@ -364,8 +364,17 @@ class varwaveunet(nn.Module):
         return o, mu, log_var
     
 
+class CombinedModel(nn.Module):
+    def __init__(self, autoencoder,conditioning_network):
+        super(CombinedModel, self).__init__()
+        self.autoencoder = autoencoder
+        self.conditioning_network = conditioning_network
 
-
+    def forward(self, content, style):
+        style_emb = self.conditioning_network(style)
+        content_emb = self.conditioning_network(content)
+        output = self.autoencoder(content,content_emb,style_emb)
+        return output
 
 
 # --------------------------------------------------------------------------------------------------
@@ -410,7 +419,14 @@ if __name__ == "__main__":
     y_wave=model(x_wave,reverb_emb,reverb_emb)
     summary(model,[(1, args.sig_len),(1, args.enc_len),(1, args.enc_len)]) # torch summary expects 2 dim input for 1d conv
     print(f"waveunet input shape: {x_wave.shape}")
-    print(f" output shape: {y_wave.shape}")
+    print(f" output shape: {y_wave[0].shape}")
+
+    # check combined model 
+    model=CombinedModel(varwaveunet(args), ReverbEncoder(args)).to(args.device)
+    summary(model,[(1, args.sig_len),(1, args.sig_len)])
+    y_wave=model(x_wave,x_wave)
+    print(f"waveunet input shape: {x_wave.shape}")
+    print(f" output shape: {y_wave[0].shape}")
 
 
   

@@ -199,9 +199,10 @@ class LossOfChoice(torch.nn.Module):
         if self.losstype=="stft" or self.losstype=="early" or self.losstype=="late"  or self.losstype=="stft+rev" or self.losstype=="rev" or self.losstype=="early+late" or self.losstype=="stft+early+late":
             self.criterion_audio=MultiResolutionSTFTLoss().to(device)
 
-        if self.losstype=="stft+vae":
+        elif self.losstype=="stft+vae":
             self.criterion_audio=MultiResolutionSTFTLoss().to(device)
-            self.beta_schedule= [(i / (self.args.num_epochs/2)) if i < self.args.num_epochs/2 else 1 for i in range(self.args.num_epochs)]
+            # self.beta_schedule= [(i / (self.args.num_epochs/2)) if i < self.args.num_epochs/2 else 1 for i in range(self.args.num_epochs)]
+            self.beta_schedule= [1] * self.args.num_epochs
 
         elif self.losstype=="logmel":
             self.criterion_audio=LogMelSpectrogramLoss().to(device)
@@ -225,7 +226,7 @@ class LossOfChoice(torch.nn.Module):
         else:
             print("this loss is not implemented")
 
-    def forward(self, epoch, data, model_waveunet, model_reverbenc, device):
+    def forward(self, epoch, data, model_combined, device):
         # get datapoint
         sContent_in = data[0].to(device) # s1r1 - content
         sStyle_in=data[1].to(device) # s2r2 - style
@@ -235,13 +236,8 @@ class LossOfChoice(torch.nn.Module):
         sLate=data[5].to(device) # s1r2_late - late reverb
         # sPositive=data[4].to(device) # s2r1
         # forward pass - get prediction of the ir
-        embStyle=model_reverbenc(sStyle_in)
-        if model_waveunet.symmetric_film:
-            embContent=model_reverbenc(sContent_in)
-        else:
-            embContent=embStyle
-
-        sPrediction=model_waveunet(sContent_in,embContent,embStyle)
+        embStyle=model_combined.conditioning_network(sStyle_in)
+        sPrediction=model_combined(sContent_in,sStyle_in)
         if bool(self.args.is_vae):
             sPrediction, mu, log_var = sPrediction
 
@@ -288,7 +284,7 @@ class LossOfChoice(torch.nn.Module):
 
         elif self.losstype=="stft+emb":
             # get the embedding of the prediction
-            embTarget=model_reverbenc(sTarget)
+            embTarget=model_combined.conditioning_network(sTarget)
             L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
             L_stft=L_sc + L_mag
             L_emb=(1-((torch.mean(self.criterion_emb(embStyle,embTarget))+ 1) / 2))
@@ -309,7 +305,7 @@ class LossOfChoice(torch.nn.Module):
 
         elif self.losstype=="stft+rev+emb":
             # get the embedding of the prediction
-            embTarget=model_reverbenc(sTarget)
+            embTarget=model_combined.conditioning_network(sTarget)
             L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
             L_sc_rev, L_mag_rev = self.criterion_audio(sTarget.squeeze(1)-sAnecho.squeeze(1), sPrediction.squeeze(1)-sAnecho.squeeze(1))
             L_stft=L_sc+L_mag
@@ -323,7 +319,7 @@ class LossOfChoice(torch.nn.Module):
 
         elif self.losstype=="stft+early+late+emb":
             # get the embedding of the prediction
-            embTarget=model_reverbenc(sTarget)
+            embTarget=model_combined.conditioning_network(sTarget)
             L_sc_stft, L_mag_stft = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
             L_sc_early, L_mag_early = self.criterion_audio(hlp.torch_standardize_max_abs(sTarget.squeeze(1)-sLate.squeeze(1)), hlp.torch_standardize_max_abs(sPrediction.squeeze(1)-sLate.squeeze(1)))
             L_sc_late, L_mag_late = self.criterion_audio(hlp.torch_standardize_max_abs(sTarget.squeeze(1)-sEarly.squeeze(1)), hlp.torch_standardize_max_abs(sPrediction.squeeze(1)-sEarly.squeeze(1)))

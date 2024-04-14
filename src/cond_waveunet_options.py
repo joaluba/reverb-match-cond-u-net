@@ -47,10 +47,10 @@ class Options():
         parser.add_argument('--style_rir', default="/home/ubuntu/Data/ACE-Single/Lecture_Room_1/1/Single_508_1_RIR.wav", type=str)
         parser.add_argument('--content_rir', default=None, type=str)
         parser.add_argument('--df_metadata', 
-                            default="/home/ubuntu/joanna/reverb-match-cond-u-net/dataset-metadata/nonoise_48khz_guestxr_pilot.csv" , type=str)
+                            default="/home/ubuntu/joanna/reverb-match-cond-u-net/dataset-metadata/nonoise_48khz_guestxr.csv" , type=str)
 
         # training arguments
-        parser.add_argument('--num_epochs', default=20, type=int)
+        parser.add_argument('--num_epochs', default=100, type=int)
         parser.add_argument('--checkpoint_step', default=2, type=int)
         parser.add_argument('--batch_size', default=8, type=int)
         parser.add_argument('--learn_rate', default=1e-4, type=float)
