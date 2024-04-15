@@ -33,8 +33,8 @@ class Options():
         parser.add_argument('--fs', default=48000, type=int)
 
         # data and model parameters
-        parser.add_argument('--sig_len', default=98304, type=int)
-        # parser.add_argument('--content_sig_len', default=98304, type=int)
+        parser.add_argument('--style_sig_len', default=98304, type=int)
+        parser.add_argument('--content_sig_len', default=12288, type=int)
         parser.add_argument('--enc_len', default=512, type=int)
         parser.add_argument('--gauss_len', default=3, type=int)
         parser.add_argument('--n_layers_revenc', default=8, type=int)
@@ -50,8 +50,8 @@ class Options():
                             default="/home/ubuntu/joanna/reverb-match-cond-u-net/dataset-metadata/nonoise_48khz_guestxr.csv" , type=str)
 
         # training arguments
-        parser.add_argument('--num_epochs', default=100, type=int)
-        parser.add_argument('--checkpoint_step', default=2, type=int)
+        parser.add_argument('--num_epochs', default=30, type=int)
+        parser.add_argument('--checkpoint_step', default=10, type=int)
         parser.add_argument('--batch_size', default=8, type=int)
         parser.add_argument('--learn_rate', default=1e-4, type=float)
         parser.add_argument('--optimizer', default="adam", type=str) # see below

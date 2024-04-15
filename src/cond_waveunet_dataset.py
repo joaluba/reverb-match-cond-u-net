@@ -20,7 +20,8 @@ class DatasetReverbTransfer(Dataset):
         custom_index = np.repeat(np.arange(len(self.df_ds)//2), 2)
         self.df_ds = self.df_ds.copy() # to prevent "SettingWithCopy" warning
         self.df_ds.loc[:, "pair_idx"] = custom_index
-        self.sig_len=args.sig_len # length of input waveform 
+        self.content_sig_len=args.content_sig_len # length of input waveform 
+        self.style_sig_len=args.style_sig_len # length of input waveform 
         self.fs=args.fs # sampling rate
         self.split = args.split # train/test/val
         self.device=args.device
@@ -42,8 +43,8 @@ class DatasetReverbTransfer(Dataset):
         # n2 = hlp.torch_load_mono(df_pair["noise_file_path"][1],self.fs)
 
         # Crop signals to a desired length
-        s1=hlp.get_nonsilent_frame(s1,self.sig_len)
-        s2=hlp.get_nonsilent_frame(s2,self.sig_len)
+        s1=hlp.get_nonsilent_frame(s1,self.content_sig_len)
+        s2=hlp.get_nonsilent_frame(s2,self.style_sig_len)
         # Apply phase shift or none
         s1*=torch.tensor(df_pair["aug_phase"][0])
         s2*=torch.tensor(df_pair["aug_phase"][1])
@@ -75,11 +76,11 @@ class DatasetReverbTransfer(Dataset):
         r2_early, r2_late = hlp.rir_split_earlylate(r2,self.fs,cutpoint_ms)
 
         # Convolve signals with impulse responses
-        s1r1 = torch.from_numpy(scipy.signal.fftconvolve(s1, r1,mode="full"))[:,:self.sig_len]
-        s2r2 = torch.from_numpy(scipy.signal.fftconvolve(s2, r2,mode="full"))[:,:self.sig_len]
+        s1r1 = torch.from_numpy(scipy.signal.fftconvolve(s1, r1,mode="full"))[:,:self.content_sig_len]
+        s2r2 = torch.from_numpy(scipy.signal.fftconvolve(s2, r2,mode="full"))[:,:self.style_sig_len]
         # s1r2 = torch.from_numpy(scipy.signal.fftconvolve(s1, r2,mode="full"))[:,:self.sig_len]
-        s1r2_early = torch.from_numpy(scipy.signal.fftconvolve(s1, r2_early,mode="full"))[:,:self.sig_len]
-        s1r2_late = torch.from_numpy(scipy.signal.fftconvolve(s1, r2_late,mode="full"))[:,:self.sig_len] 
+        s1r2_early = torch.from_numpy(scipy.signal.fftconvolve(s1, r2_early,mode="full"))[:,:self.content_sig_len]
+        s1r2_late = torch.from_numpy(scipy.signal.fftconvolve(s1, r2_late,mode="full"))[:,:self.content_sig_len] 
         # s2r1 = torch.from_numpy(scipy.signal.fftconvolve(s2, r1,mode="full"))[:,:self.sig_len]
 
         # Add noise to signals

@@ -63,7 +63,7 @@ class ReverbEncoder(nn.Module):
     def __init__(self, args):
         super().__init__() 
         # constants
-        self.sig_len=args.sig_len
+        self.sig_len=args.style_sig_len
         self.z_len=args.enc_len
         self.N_layers=args.n_layers_revenc
         # internal parameters of the network:
@@ -234,7 +234,7 @@ class varwaveunet(nn.Module):
     def __init__(self, args):
         super().__init__()
         # constants:
-        self.sig_len = args.sig_len
+        self.sig_len = args.content_sig_len
         self.n_layers = args.n_layers_waveunet
         self.z_channels = args.enc_len 
         self.h_channels = args.gauss_len 
@@ -371,8 +371,14 @@ class CombinedModel(nn.Module):
         self.conditioning_network = conditioning_network
 
     def forward(self, content, style):
+
         style_emb = self.conditioning_network(style)
-        content_emb = self.conditioning_network(content)
+        
+        if self.autoencoder.symmetric_film:
+            content_emb = self.conditioning_network(content)
+        else:
+            content_emb=style_emb
+
         output = self.autoencoder(content,content_emb,style_emb)
         return output
 
@@ -387,7 +393,6 @@ if __name__ == "__main__":
 
     # specify parameters of the model
     args.fs = 48000
-    args.sig_len = 98304
     args.enc_len = 512
     args.n_layers_revenc = 8
     args.n_layers_waveunet = 12
@@ -395,35 +400,36 @@ if __name__ == "__main__":
     args.device="cuda"
 
     # create random tensor with the size of the expected data point
-    x_wave=torch.randn(8,1,args.sig_len).to(args.device)
+    x_wave=torch.randn(8,1,args.style_sig_len).to(args.device)
 
     # check reverb encoder
     model=ReverbEncoder(args).to(args.device)
     model.eval()
     reverb_emb=model(x_wave)
-    summary(model,(1, args.sig_len))# torch summary expects 2 dim input for 1d conv
+    summary(model,(1, args.content_sig_len))# torch summary expects 2 dim input for 1d conv
     print(f"reverb encoder network input shape: {x_wave.shape}")
     print(f"reverb encoder network output shape: {reverb_emb.shape}")
 
     # check waveunet 
+    x_wave=torch.randn(8,1,args.content_sig_len).to(args.device)
     model=waveunet(args).to(args.device)
     model.eval()
     y_wave=model(x_wave,reverb_emb,reverb_emb)
-    summary(model,[(1, args.sig_len),(1, args.enc_len),(1, args.enc_len)]) # torch summary expects 2 dim input for 1d conv
+    summary(model,[(1, args.content_sig_len),(1, args.enc_len),(1, args.enc_len)]) # torch summary expects 2 dim input for 1d conv
     print(f"waveunet input shape: {x_wave.shape}")
     print(f" output shape: {y_wave.shape}")
 
-    # check varwaveunet 
-    model=varwaveunet(args).to(args.device)
-    model.eval()
-    y_wave=model(x_wave,reverb_emb,reverb_emb)
-    summary(model,[(1, args.sig_len),(1, args.enc_len),(1, args.enc_len)]) # torch summary expects 2 dim input for 1d conv
-    print(f"waveunet input shape: {x_wave.shape}")
-    print(f" output shape: {y_wave[0].shape}")
+    # # check varwaveunet 
+    # model=varwaveunet(args).to(args.device)
+    # model.eval()
+    # y_wave=model(x_wave,reverb_emb,reverb_emb)
+    # summary(model,[(1, args.content_sig_len),(1, args.enc_len),(1, args.enc_len)]) # torch summary expects 2 dim input for 1d conv
+    # print(f"waveunet input shape: {x_wave.shape}")
+    # print(f" output shape: {y_wave[0].shape}")
 
     # check combined model 
-    model=CombinedModel(varwaveunet(args), ReverbEncoder(args)).to(args.device)
-    summary(model,[(1, args.sig_len),(1, args.sig_len)])
+    model=CombinedModel(waveunet(args), ReverbEncoder(args)).to(args.device)
+    summary(model,[(1, args.content_sig_len),(1, args.style_sig_len)])
     y_wave=model(x_wave,x_wave)
     print(f"waveunet input shape: {x_wave.shape}")
     print(f" output shape: {y_wave[0].shape}")

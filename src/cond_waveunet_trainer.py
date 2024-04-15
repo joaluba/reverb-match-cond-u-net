@@ -95,8 +95,8 @@ class Trainer(torch.nn.Module):
         
     def logaudio_tboard(self,writer):
         with torch.no_grad():
-            chosen_idx=[122,1071,1175,1574,2621,37,267,706,822,1590]
-            # chosen_idx=[1,2,3,4,5,6,7,8,9,10]
+            # chosen_idx=[122,1071,1175,1574,2621,37,267,706,822,1590]
+            chosen_idx=[1,2,3,4,5,6,7,8,9,10]
             for i in range(0,len(chosen_idx)):
                 data=self.trainset[chosen_idx[i]]
                 data = [data[i].unsqueeze(0) for i in range(len(data))]

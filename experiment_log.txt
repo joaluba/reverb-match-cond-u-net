@@ -91,3 +91,16 @@
 [2024-04-13-23:46:54] same
 [2024-04-14-00:21:01] big pilot (100 epochs) without beta scheduling 
 [2024-04-14-00:22:46] same
+[2024-04-14-22:59:16] branch shorttime: different style and content length
+[2024-04-14-23:00:08] same
+[2024-04-14-23:01:46] same
+[2024-04-14-23:03:27] debug
+[2024-04-14-23:08:57] debug
+[2024-04-14-23:11:35] same
+[2024-04-14-23:27:51] debug
+[2024-04-14-23:29:11] debug
+[2024-04-14-23:33:53] debug
+[2024-04-14-23:35:03] same
+[2024-04-14-23:43:24] full data set, 30 epochs test with shorter frames
+[2024-04-14-23:45:47] debug
+[2024-04-14-23:47:41] debug shorttime 
