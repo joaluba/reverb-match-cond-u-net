@@ -111,7 +111,7 @@ class Trainer(torch.nn.Module):
     def save_checkpoint(self,epoch,loss_evol,name):
         torch.save({
                     'epoch': epoch,
-                    'model_waveunet_state_dict': self.model_combined.state_dict(),
+                    'model_combined_state_dict': self.model_combined.state_dict(),
                     'optimizer_condwaveunet_state_dict': self.optimizer_combined.state_dict(),
                     'loss': loss_evol,
                     }, os.path.join(self.args.savedir,'checkpoint' +name+'.pt'))
