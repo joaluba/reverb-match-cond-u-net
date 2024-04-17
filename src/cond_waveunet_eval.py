@@ -37,9 +37,19 @@ class Evaluator(torch.nn.Module):
     def load_eval_objects(self):
         # ---- MODELS: ----
         # load reverb encoder
-        self.model_reverbenc=cond_waveunet_model.ReverbEncoder(self.args_train).to(self.args_test.device).eval()
-        # laod waveunet 
-        self.model_waveunet=cond_waveunet_model.waveunet(self.args_train).to(self.args_test.device).eval()
+        self.model_reverbenc=cond_waveunet_model.ReverbEncoder(self.args_train)
+        # load waveunet 
+        if bool(self.args_train.is_vae)==False:
+            self.model_waveunet=cond_waveunet_model.waveunet(self.args_train)
+        else:
+            self.model_waveunet=cond_waveunet_model.varwaveunet(self.args_train)
+        # load combined model 
+        if bool(self.args_test.joint_optim):
+            self.model_combined=cond_waveunet_model.CombinedModel(self.model_waveunet,self.model_reverbenc).to(self.args_test.device)
+        else:
+            self.model_reverbenc=self.model_reverbenc.to(self.args_test.device)
+            self.model_waveunet=self.model_waveunet.to(self.args_test.device)
+
         # ---- LOSS CRITERIA: ----
         self.criterion_stft_loss = cond_waveunet_loss.MultiResolutionSTFTLoss(
             fft_sizes=[256, 512, 1024, 2048,4096],
@@ -55,8 +65,11 @@ class Evaluator(torch.nn.Module):
         self.criterion_stoi=ShortTimeObjectiveIntelligibility(16000).to(self.args_test.device)
         # ---- TRAINING RESULTS (WEIGHTS): ----
         self.train_results=torch.load(args_test.train_results_file,map_location=self.args_test.device)
-        self.model_reverbenc.load_state_dict(self.train_results["model_reverbenc_state_dict"])           
-        self.model_waveunet.load_state_dict(self.train_results["model_waveunet_state_dict"])
+        if bool(self.args_test.joint_optim):
+            self.model_combined.load_state_dict(self.train_results["model_waveunet_state_dict"])
+        else:
+            self.model_reverbenc.load_state_dict(self.train_results["model_reverbenc_state_dict"])           
+            self.model_waveunet.load_state_dict(self.train_results["model_waveunet_state_dict"])
         # ---- DATASETS: ----
         self.args_train.split=self.args_test.eval_split
         self.testset_orig=cond_waveunet_dataset.DatasetReverbTransfer(self.args_train)
@@ -78,14 +91,17 @@ class Evaluator(torch.nn.Module):
             sContent = data[0].to(self.args_test.device)
             sStyle=data[1].to(self.args_test.device)
             sTarget=data[2].to(self.args_test.device)
-            # forward pass - get prediction of the ir
-            embStyle=self.model_reverbenc(sStyle)
-
-            if bool(self.args_test.symmetric_film):
-                embContent=self.model_reverbenc(sContent)
+            if bool(self.args_test.joint_optim):
+                sPrediction=self.model_combined(sContent,sStyle)
             else:
-                embContent=embStyle
-            sPrediction=self.model_waveunet(sContent,embContent,embStyle)
+                # forward pass - get prediction of the ir
+                embStyle=self.model_reverbenc(sStyle)
+
+                if bool(self.args_test.symmetric_film):
+                    embContent=self.model_reverbenc(sContent)
+                else:
+                    embContent=embStyle
+                sPrediction=self.model_waveunet(sContent,embContent,embStyle)
             return sContent, sStyle, sTarget, sPrediction
         
     def add_all_losses(self,idx,comp_name,x1,x2):
@@ -181,6 +197,8 @@ def eval_losses_batchproc(args_test):
                 for j, data in tqdm(enumerate(tmp_evaluation.testloader),total = len(tmp_evaluation.testloader)):
                     # get signals
                     sContent, sStyle, sTarget, sPrediction=tmp_evaluation.infer(data)
+                    if bool(tmp_evaluation.args_train.is_vae):      
+                        sPrediction, mu, log_var = sPrediction
                     # predicion : target
                     df_subdir_losses=pd.concat([df_subdir_losses, pd.DataFrame(tmp_evaluation.add_all_losses(j,"prediction:target",sPrediction,sTarget),index=[0])],ignore_index=True)
                     # content : target 
@@ -337,8 +355,9 @@ if __name__ == "__main__":
     # args_test.eval_file_name="all_losses-22-03-2024.csv"
     # eval_losses(args_test)
 
-    args_test.eval_dir="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-28-03-2024/"
+    args_test.eval_dir="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-14-04-2024/"
     args_test.symmetric_film=1
+    args_test.joint_optim=1
     args_test.save_dir=args_test.eval_dir
     args_test.rt60diffmin=-3
     args_test.rt60diffmax=3
