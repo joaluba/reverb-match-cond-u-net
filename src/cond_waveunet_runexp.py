@@ -64,21 +64,19 @@ if __name__ == "__main__":
     args = Options().parse()
 
 
-    # Conditions of the experiment
-    
-    cond_trasf_type = ["many-to-many"]
-    # cond_losses=["stft"]
-    # cond_alphas=[[1]]
-    cond_losses=["stft+vae", "stft"]
-    cond_alphas=[[1,1],[1]]
-    cond_is_vae=[1,0]
+    # Conditions of the experiment to permute
+    perm_cond_trasf_type = ["many-to-many"]
+    perm_cond_losses=["stft+vae", "logmel+vae", "stft","logmel","stft+emb"]
+    # Additional conditions
+    cond_alphas=[[1,1],[1,1],[1],[1],[1,1]]
+    cond_is_vae=[1,1,0,0,0]
 
     # Conditions combinations list
     from itertools import product
 
     # Generate all combinations
     cond_combinations = []
-    for combo in product(cond_trasf_type, cond_losses):
+    for combo in product(perm_cond_trasf_type, perm_cond_losses):
         combination_dict = {
             'cond_trasf_type': combo[0],
             'cond_losses': combo[1]
@@ -116,7 +114,6 @@ if __name__ == "__main__":
             args.learn_rate = 1e-4
             args.batch_size = 8
 
-        args.symmetric_film=1
         args.is_vae=cond_is_vae[i]
         args.losstype=loss
         args.loss_alphas=alphas

@@ -5,16 +5,6 @@ import random
 import numpy as np
 import pandas as pd
 
-def bool_flag(s):
-    if s == '1':
-        return True
-    elif s == '0':
-        return False
-    msg = 'Invalid value "%s" for bool flag (should be 0 or 1)'
-    raise ValueError(msg % s)
-
-def list_float_flag(s):
-    return [float(_) for _ in list(s)]
 
 class Options():
 
@@ -35,11 +25,11 @@ class Options():
         # data and model parameters
         parser.add_argument('--sig_len', default=98304, type=int)
         # parser.add_argument('--content_sig_len', default=98304, type=int)
-        parser.add_argument('--enc_len', default=512, type=int)
+        parser.add_argument('--enc_len', default=128, type=int)
         parser.add_argument('--gauss_len', default=3, type=int)
-        parser.add_argument('--n_layers_revenc', default=8, type=int)
+        parser.add_argument('--n_layers_revenc', default=12, type=int)
         parser.add_argument('--n_layers_waveunet', default=12, type=int)
-        parser.add_argument('--is_vae', default=1, type=int)
+        parser.add_argument('--is_vae', default=0, type=int)
         parser.add_argument('--symmetric_film', default=1, type=int)
 
 
@@ -50,8 +40,8 @@ class Options():
                             default="/home/ubuntu/joanna/reverb-match-cond-u-net/dataset-metadata/nonoise_48khz_guestxr.csv" , type=str)
 
         # training arguments
-        parser.add_argument('--num_epochs', default=100, type=int)
-        parser.add_argument('--checkpoint_step', default=2, type=int)
+        parser.add_argument('--num_epochs', default=10, type=int)
+        parser.add_argument('--checkpoint_step', default=5, type=int)
         parser.add_argument('--batch_size', default=8, type=int)
         parser.add_argument('--learn_rate', default=1e-4, type=float)
         parser.add_argument('--optimizer', default="adam", type=str) # see below

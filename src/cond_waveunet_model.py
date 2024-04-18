@@ -388,10 +388,10 @@ if __name__ == "__main__":
     # specify parameters of the model
     args.fs = 48000
     args.sig_len = 98304
-    args.enc_len = 512
-    args.n_layers_revenc = 8
+    args.enc_len = 128
+    args.n_layers_revenc = 12
     args.n_layers_waveunet = 12
-    args.gauss_len = 3
+    args.gauss_len = 5
     args.device="cuda"
 
     # create random tensor with the size of the expected data point
@@ -418,7 +418,7 @@ if __name__ == "__main__":
     model.eval()
     y_wave=model(x_wave,reverb_emb,reverb_emb)
     summary(model,[(1, args.sig_len),(1, args.enc_len),(1, args.enc_len)]) # torch summary expects 2 dim input for 1d conv
-    print(f"waveunet input shape: {x_wave.shape}")
+    print(f"variationall waveunet input shape: {x_wave.shape}")
     print(f" output shape: {y_wave[0].shape}")
 
     # check combined model 

@@ -204,6 +204,11 @@ class LossOfChoice(torch.nn.Module):
             # self.beta_schedule= [(i / (self.args.num_epochs/2)) if i < self.args.num_epochs/2 else 1 for i in range(self.args.num_epochs)]
             self.beta_schedule= [1] * self.args.num_epochs
 
+        elif self.losstype=="logmel+vae":
+            self.criterion_audio=LogMelSpectrogramLoss().to(device)
+            # self.beta_schedule= [(i / (self.args.num_epochs/2)) if i < self.args.num_epochs/2 else 1 for i in range(self.args.num_epochs)]
+            self.beta_schedule= [1] * self.args.num_epochs
+
         elif self.losstype=="logmel":
             self.criterion_audio=LogMelSpectrogramLoss().to(device)
 
@@ -268,10 +273,17 @@ class LossOfChoice(torch.nn.Module):
         elif self.losstype=="stft+vae":
             L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
             L_stft= L_sc+ L_mag 
-            L_vae = self.beta_schedule[epoch]-torch.sum(1+ log_var - mu.pow(2)- log_var.exp())
+            L_vae = self.beta_schedule[epoch]*(-torch.sum(1+ log_var - mu.pow(2)- log_var.exp()))
 
             L=[L_stft,L_vae]
             L_names=["L_stft","L_vae"]
+
+        
+        elif self.losstype=="logmel+vae":
+            L_logmel = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
+            L_vae = self.beta_schedule[epoch]*(-torch.sum(1+ log_var - mu.pow(2)- log_var.exp()))
+            L=[L_logmel,L_vae]
+            L_names=["L_logmel","L_vae"]
 
 
         elif self.losstype=="stft+rev":
