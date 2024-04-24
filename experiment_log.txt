@@ -94,3 +94,9 @@
 [2024-04-17-15:26:36] pilot for perm_cond_losses=["stft+vae", "logmel+vae", "stft","logmel","stft+emb"]
 [2024-04-17-15:28:17] same but 13 layers of encoder
 [2024-04-17-15:29:13] same but layers of encoder=12
+[2024-04-19-16:34:32] pilot (with pilot dataset) for different models 
+[2024-04-19-16:35:33] same
+[2024-04-19-17:15:00] for some reason there was the "late" loss in the experiment from 14-04... running again the same things (joint optimizer and adaptive learning rate) for stft and stft+vae and 100 epochs
+[2024-04-22-12:31:00] testing with revenc 12, enc_len 128 and joint opt but without lr update
+[2024-04-22-17:53:01] trying to recover the settings that lead to better results
+[2024-04-23-17:10:51] bla

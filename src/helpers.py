@@ -7,6 +7,8 @@ import librosa
 import scipy.signal as signal
 from masp import shoebox_room_sim as srs
 from os.path import join as pjoin
+import colorednoise
+import random
 
 def place_on_circle(head_pos,r,angle_deg):
 # place a source around the reference point (like head)
@@ -61,7 +63,6 @@ def torch_standardize_max_abs(signal,out=False):
         return standardized_signal, max_abs_value
     else:
         return standardized_signal
-
 
 
 def torch_resample_if_needed(audio,sr,sr_target):
@@ -134,7 +135,7 @@ def conv_based_crop_torch(audio_orig,fs,L_win_smpl,stride_smpl,device):
 def torch_set_level(sig_in,L_des):
     # set FS level of the signal
     sig_zeromean=torch.subtract(sig_in,torch.mean(sig_in,dim=1))
-    sig_norm_en=sig_zeromean/torch.std(sig_zeromean.reshape(-1))
+    sig_norm_en=sig_zeromean/torch.max(torch.std(sig_zeromean.reshape(-1)),torch.tensor(1e-10))
     sig_out =sig_norm_en*np.power(10,L_des/20)
     #print(20*np.log10(np.sqrt(np.mean(np.power(sig_out,2)))))
     return sig_out
@@ -226,6 +227,19 @@ def random_srcrec_in_room(room_x,room_y,room_z):
     src_pos = place_on_circle(np.array([mic_pos[0],mic_pos[1],mic_pos[2]]),0.1,0)
     
     return mic_pos,src_pos
+
+def gen_rand_colored_noise(p,L):
+
+    if random.random() < p:
+        beta = random.random() + 1.0
+        noise = colorednoise.powerlaw_psd_gaussian(beta, L)
+        noise = np.expand_dims(noise, 0)
+        noise=torch.tensor(noise, dtype=torch.float32) 
+    else:
+        noise = torch.zeros(1,L, dtype=torch.float32) 
+
+    return noise
+
 
 
 def torch_deconv_W(reverberant_signal, room_impulse_response):

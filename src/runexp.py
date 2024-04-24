@@ -63,23 +63,32 @@ if __name__ == "__main__":
     # load default arguments
     args = Options().parse()
 
+    # args for all conditions in this exp
+    args.num_epochs=300
+    args.enc_len=512
+    args.n_layers_revenc=8
+    args.btl_len=512
+    args.n_layers_enc=12
+    args.n_layers_dec=7
+    args.symmetric_film=1
 
     # Conditions of the experiment to permute
     perm_cond_trasf_type = ["many-to-many"]
-    perm_cond_losses=["stft+vae", "logmel+vae", "stft","logmel","stft+emb"]
+    perm_model_types=["c_wunet", "c_varwunet"]
+
     # Additional conditions
-    cond_alphas=[[1,1],[1,1],[1],[1],[1,1]]
-    cond_is_vae=[1,1,0,0,0]
+    cond_alphas=[[1],[1,1]]
+    cond_losses=["stft","stft+vae"]
 
     # Conditions combinations list
     from itertools import product
 
     # Generate all combinations
     cond_combinations = []
-    for combo in product(perm_cond_trasf_type, perm_cond_losses):
+    for combo in product(perm_cond_trasf_type, perm_model_types):
         combination_dict = {
             'cond_trasf_type': combo[0],
-            'cond_losses': combo[1]
+            'cond_model': combo[1]
             }
         cond_combinations.append(combination_dict)
 
@@ -96,10 +105,8 @@ if __name__ == "__main__":
     cond_count=0
     for i, combination in enumerate(cond_combinations, start=0):
 
-        # prepare params for this combination
-        loss=combination["cond_losses"]
+        # prepare params for this combination 
         transf_type=combination["cond_trasf_type"]
-        alphas=cond_alphas[i]
 
         if transf_type=="one-to-many":
             args.content_rir="anechoic"
@@ -114,16 +121,18 @@ if __name__ == "__main__":
             args.learn_rate = 1e-4
             args.batch_size = 8
 
-        args.is_vae=cond_is_vae[i]
-        args.losstype=loss
-        args.loss_alphas=alphas
+        args.modeltype=combination["cond_model"]
+        args.losstype=cond_losses[i]
+        args.loss_alphas=cond_alphas[i]
 
-        # create training tag based on date and params
+        # create training tags based on date and params
         date_tag = datetime.now().strftime("%d-%m-%Y--%H-%M")
-        loss_tag = "_"+ loss
+        loss_tag = "_"+ args.losstype
         transf_tag="_"+ transf_type
-        alpha_tag="_"+ '_'.join(map(str, alphas))
-        tag=date_tag+transf_tag+loss_tag+alpha_tag
+        model_tag ="_"+ args.modeltype
+        alpha_tag="_"+ '_'.join(map(str, args.loss_alphas))
+        # create one long training tag
+        tag = date_tag + transf_tag + model_tag + loss_tag + alpha_tag
         # prepare diectory for this training combination
         args.savedir=os.path.join(runexp_savepath,tag) 
 

@@ -26,6 +26,7 @@ class DatasetReverbTransfer(Dataset):
         self.device=args.device
         self.content_ir=args.content_rir
         self.style_ir=args.style_rir
+        self.p_noise=args.p_noise
 
     def __len__(self):
         return int(len(self.df_ds)/2)
@@ -38,19 +39,14 @@ class DatasetReverbTransfer(Dataset):
         # Load signals (and resample if needed)
         s1 = hlp.torch_load_mono(df_pair["speech_file_path"][0],self.fs)
         s2 = hlp.torch_load_mono(df_pair["speech_file_path"][1],self.fs)
-        # n1 = hlp.torch_load_mono(df_pair["noise_file_path"][0],self.fs)
-        # n2 = hlp.torch_load_mono(df_pair["noise_file_path"][1],self.fs)
 
         # Crop signals to a desired length
         s1=hlp.get_nonsilent_frame(s1,self.sig_len)
         s2=hlp.get_nonsilent_frame(s2,self.sig_len)
-        # Apply phase shift or none
-        s1*=torch.tensor(df_pair["aug_phase"][0])
-        s2*=torch.tensor(df_pair["aug_phase"][1])
-        
 
-        # n1=hlp.get_nonsilent_frame(n1,self.sig_len)
-        # n2=hlp.get_nonsilent_frame(n2,self.sig_len)
+        # Apply phase shift or none
+        s1*=np.random.choice([-1, 1])
+        s2*=np.random.choice([-1, 1])
 
         # Load impulse responses
         # Note: If self.content_ir is not empty, it means that we want all content audios to have the same target ir,
@@ -70,38 +66,30 @@ class DatasetReverbTransfer(Dataset):
             r2 = hlp.torch_load_mono(self.style_ir,self.fs)
 
 
-        # separate style rir into early and late 
-        cutpoint_ms=50
-        r2_early, r2_late = hlp.rir_split_earlylate(r2,self.fs,cutpoint_ms)
-
         # Convolve signals with impulse responses
         s1r1 = torch.from_numpy(scipy.signal.fftconvolve(s1, r1,mode="full"))[:,:self.sig_len]
         s2r2 = torch.from_numpy(scipy.signal.fftconvolve(s2, r2,mode="full"))[:,:self.sig_len]
-        # s1r2 = torch.from_numpy(scipy.signal.fftconvolve(s1, r2,mode="full"))[:,:self.sig_len]
-        s1r2_early = torch.from_numpy(scipy.signal.fftconvolve(s1, r2_early,mode="full"))[:,:self.sig_len]
-        s1r2_late = torch.from_numpy(scipy.signal.fftconvolve(s1, r2_late,mode="full"))[:,:self.sig_len] 
-        # s2r1 = torch.from_numpy(scipy.signal.fftconvolve(s2, r1,mode="full"))[:,:self.sig_len]
+        s1r2 = torch.from_numpy(scipy.signal.fftconvolve(s1, r2,mode="full"))[:,:self.sig_len]
 
-        # Add noise to signals
-        # snr1=df_pair["snr"][0]
-        # snr2=df_pair["snr"][1]
-        # s1r1n1=hlp.torch_mix_and_set_snr(s1r1,n1,snr1)
-        # s2r2n2=hlp.torch_mix_and_set_snr(s2r2,n2,snr2)
-        s1r1n1=s1r1
-        s2r2n2=s2r2
+        # generate background noise samples
+        n1=hlp.gen_rand_colored_noise(self.p_noise,self.sig_len)
+        n2=hlp.gen_rand_colored_noise(self.p_noise,self.sig_len)
+
+        # Add noise to content and style signal
+        snr1=15 + (40 - 15) * torch.rand(1)
+        snr2=15 + (40 - 15) * torch.rand(1)
+        s1r1n1=hlp.torch_mix_and_set_snr(s1r1,n1,snr1)
+        s2r2n2=hlp.torch_mix_and_set_snr(s2r2,n2,snr2)
 
         # scale data but preserve symmetry
         s1r1n1=hlp.torch_standardize_max_abs(s1r1n1) # Reverberant content sound
         s2r2n2=hlp.torch_standardize_max_abs(s2r2n2) # Style sound
-        s1r2, sc_max=hlp.torch_standardize_max_abs(s1r2_early+s1r2_late,out=True) # Target all
-        s1r2_early=s1r2_early/sc_max
-        s1r2_late=s1r2_late/sc_max
-        # s1r2=hlp.torch_standardize_max_abs(s1r2) # Target
+        s1r2=hlp.torch_standardize_max_abs(s1r2) # Target
+
         # s2r1=hlp.torch_standardize_max_abs(s2r1) # "Flipped" target
         s1=hlp.torch_standardize_max_abs(s1) # Anechoic content sound
 
-
-        return s1r1n1, s2r2n2, s1r2, s1, s1r2_early, s1r2_late
+        return s1r1n1, s2r2n2, s1r2, s1
     
     def get_idx_with_rt60diff(self,diff_rt60_min,diff_rt60_max):
         # create column diff_rt60 to compute difference in rt60 between content and style audio

@@ -25,12 +25,12 @@ class Options():
         # data and model parameters
         parser.add_argument('--sig_len', default=98304, type=int)
         # parser.add_argument('--content_sig_len', default=98304, type=int)
-        parser.add_argument('--enc_len', default=128, type=int)
+        parser.add_argument('--enc_len', default=512, type=int)
         parser.add_argument('--btl_len', default=512, type=int)
         parser.add_argument('--gauss_len', default=3, type=int)
-        parser.add_argument('--n_layers_revenc', default=12, type=int)
-        parser.add_argument('--n_layers_waveunet', default=12, type=int)
-        parser.add_argument('--is_vae', default=0, type=int)
+        parser.add_argument('--n_layers_revenc', default=8, type=int)
+        parser.add_argument('--n_layers_enc', default=12, type=int)
+        parser.add_argument('--n_layers_dec', default=7, type=int)
         parser.add_argument('--symmetric_film', default=1, type=int)
 
 
@@ -41,6 +41,7 @@ class Options():
                             default="/home/ubuntu/joanna/reverb-match-cond-u-net/dataset-metadata/nonoise_48khz_guestxr.csv" , type=str)
 
         # training arguments
+        parser.add_argument('--modeltype', default="c_fins", type=str)
         parser.add_argument('--num_epochs', default=30, type=int)
         parser.add_argument('--checkpoint_step', default=5, type=int)
         parser.add_argument('--batch_size', default=8, type=int)
@@ -65,10 +66,10 @@ class Options():
         torch.manual_seed(0)
         np.random.seed(0)
         args = vars(self.opt)
-        print('| options')
-        for k, v in args.items():
-            print('%s: %s' % (str(k), str(v)))
-        print()
+        # print('| options')
+        # for k, v in args.items():
+        #     print('%s: %s' % (str(k), str(v)))
+        # print()
         return self.opt
 
 
@@ -107,8 +108,8 @@ class OptionsEval():
         torch.manual_seed(0)
         np.random.seed(0)
         args = vars(self.opt)
-        print('| options')
-        for k, v in args.items():
-            print('%s: %s' % (str(k), str(v)))
-        print()
+        # print('| options')
+        # for k, v in args.items():
+        #     print('%s: %s' % (str(k), str(v)))
+        # print()
         return self.opt

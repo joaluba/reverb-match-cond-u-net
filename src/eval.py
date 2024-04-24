@@ -21,7 +21,6 @@ from options import OptionsEval
 from torch.utils.data import Subset
 
 
-
 class Evaluator(torch.nn.Module):
     def __init__(self,args_test):
         super().__init__()
@@ -36,20 +35,7 @@ class Evaluator(torch.nn.Module):
 
     def load_eval_objects(self):
         # ---- MODELS: ----
-        # load reverb encoder
-        self.model_reverbenc=models.ReverbEncoder(self.args_train)
-        # load waveunet 
-        if bool(self.args_train.is_vae)==False:
-            self.model_waveunet=models.waveunet(self.args_train)
-        else:
-            self.model_waveunet=models.varwaveunet(self.args_train)
-        # load combined model 
-        if bool(self.args_test.joint_optim):
-            self.model_combined=models.CombinedModel(self.model_waveunet,self.model_reverbenc).to(self.args_test.device)
-        else:
-            self.model_reverbenc=self.model_reverbenc.to(self.args_test.device)
-            self.model_waveunet=self.model_waveunet.to(self.args_test.device)
-
+        self.model=self.load_chosen_model(self.args_train.modeltype).to(self.args_test.device)
         # ---- LOSS CRITERIA: ----
         self.criterion_stft_loss = loss.MultiResolutionSTFTLoss(
             fft_sizes=[256, 512, 1024, 2048,4096],
@@ -65,11 +51,7 @@ class Evaluator(torch.nn.Module):
         self.criterion_stoi=ShortTimeObjectiveIntelligibility(16000).to(self.args_test.device)
         # ---- TRAINING RESULTS (WEIGHTS): ----
         self.train_results=torch.load(args_test.train_results_file,map_location=self.args_test.device)
-        if bool(self.args_test.joint_optim):
-            self.model_combined.load_state_dict(self.train_results["model_waveunet_state_dict"])
-        else:
-            self.model_reverbenc.load_state_dict(self.train_results["model_reverbenc_state_dict"])           
-            self.model_waveunet.load_state_dict(self.train_results["model_waveunet_state_dict"])
+        self.model.load_state_dict(self.train_results["model_state_dict"])
         # ---- DATASETS: ----
         self.args_train.split=self.args_test.eval_split
         self.testset_orig=dataset.DatasetReverbTransfer(self.args_train)
@@ -84,34 +66,48 @@ class Evaluator(torch.nn.Module):
 
     
     def infer(self,data):
+        # Function to infer target audio
         with torch.no_grad():
-            # Function to infer target audio
-            # ------------------------------
-            # get datapoint
-            sContent = data[0].to(self.args_test.device)
-            sStyle=data[1].to(self.args_test.device)
-            sTarget=data[2].to(self.args_test.device)
-            if bool(self.args_test.joint_optim):
-                sPrediction=self.model_combined(sContent,sStyle)
-            else:
-                # forward pass - get prediction of the ir
-                embStyle=self.model_reverbenc(sStyle)
-
-                if bool(self.args_test.symmetric_film):
-                    embContent=self.model_reverbenc(sContent)
-                else:
-                    embContent=embStyle
-                sPrediction=self.model_waveunet(sContent,embContent,embStyle)
-            return sContent, sStyle, sTarget, sPrediction
+            sContent_in = data[0].to(self.args_test.device)
+            sStyle_in=data[1].to(self.args_test.device)
+            sTarget_gt=data[2].to(self.args_test.device)
+            sTarget_prediction=self.model(sContent_in,sStyle_in)
+            return sContent_in, sStyle_in, sTarget_gt, sTarget_prediction
         
+    def load_chosen_model(self,model_type):
+
+        if model_type=="c_wunet":
+            autoencoder=models.waveunet(self.args_train)
+            condgenerator=models.ReverbEncoder(self.args_train)
+            jointmodel=models.cond_reverb_transfer(autoencoder,condgenerator)
+            self.args_train.is_vae=0
+        
+        elif model_type=="c_varwunet":
+            autoencoder=models.varwaveunet(self.args_train)
+            condgenerator=models.ReverbEncoder(self.args_train)
+            jointmodel=models.cond_reverb_transfer(autoencoder,condgenerator)
+            self.args_train.is_vae=1
+
+        elif model_type=="c_fins":
+            autoencoder=models.fins_encdec(self.args_train)
+            condgenerator=models.ReverbEncoder(self.args_train)
+            jointmodel=models.cond_reverb_transfer(autoencoder,condgenerator)
+            self.args_train.is_vae=0
+
+        else:
+            print("This model type is not implemented")
+
+        return jointmodel
+    
+
     def add_all_losses(self,idx,comp_name,x1,x2):
 
         if len(x1.shape)<3:
             x1=x1.unsqueeze(0)
         if len(x2.shape)<3:
             x2=x2.unsqueeze(0)
-        x1_emb=self.model_reverbenc(x1)
-        x2_emb=self.model_reverbenc(x2)
+        x1_emb=self.model.conditioning_network(x1)
+        x2_emb=self.model.conditioning_network(x2)
 
         x1=hlp.torch_resample_if_needed(x1,48000,16000).to(self.args_test.device)
         x2=hlp.torch_resample_if_needed(x2,48000,16000).to(self.args_test.device)
@@ -327,7 +323,7 @@ def eval_directory(args_test):
             args_test.eval_subdir=subdir_path
              # load results from checkpoints in the directory
             for filename in os.listdir(subdir_path):
-                if filename.startswith("checkpoint") & filename.endswith("best.pt"): # only computing measures for the best checkpoint
+                if filename.startswith("checkpoint") & filename.endswith("80.pt"): # only computing measures for the best checkpoint
                 # if filename.startswith("checkpoint"): # computing measures for all checkpoints
                     # specify training params file
                     args_test.train_args_file=pjoin(subdir_path,"trainargs.pt")
@@ -355,7 +351,7 @@ if __name__ == "__main__":
     # args_test.eval_file_name="all_losses-22-03-2024.csv"
     # eval_losses(args_test)
 
-    args_test.eval_dir="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-14-04-2024/"
+    args_test.eval_dir="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-19-04-2024/"
     args_test.symmetric_film=1
     args_test.joint_optim=1
     args_test.save_dir=args_test.eval_dir

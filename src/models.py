@@ -144,7 +144,7 @@ class waveunet(nn.Module):
     def __init__(self, args):
         super().__init__()
         # constants:
-        self.n_layers = args.n_layers_waveunet
+        self.n_layers = args.n_layers_enc
         self.z_channels = args.enc_len 
         self.channels_interval = 24
         self.symmetric_film = bool(args.symmetric_film)
@@ -232,7 +232,7 @@ class varwaveunet(nn.Module):
         super().__init__()
         # constants:
         self.sig_len = args.sig_len
-        self.n_layers = args.n_layers_waveunet
+        self.n_layers = args.n_layers_enc
         self.z_channels = args.enc_len 
         self.h_channels = args.gauss_len 
         self.channels_interval = 24
@@ -561,25 +561,40 @@ class fins_decoder(nn.Module):
                  in_channels=1,
                  z_len=128,
                  l_len=512,
-                 device="cuda"):
+                 device="cuda",
+                 N_layers=7):
         super().__init__()
 
         self.in_channels = in_channels
         self.z_channels = z_len
         self.l_len = l_len
         self.device = device
+        self.n_layers = N_layers
 
 
         self.preprocess = customConv1d(in_channels, 512, kernel_size=3)
-        self.gblocks = nn.ModuleList ([
-            fins_DecBlock(512, 512, z_len, 1,self.device),
-            fins_DecBlock(512, 512, z_len, 1,self.device),
-            fins_DecBlock(512, 256, z_len, 2,self.device),
-            fins_DecBlock(256, 256, z_len, 2,self.device),
-            fins_DecBlock(256, 256, z_len, 2,self.device),
-            fins_DecBlock(256, 128, z_len, 3,self.device),
-            fins_DecBlock(128, 64, z_len,8,self.device)
-        ])
+
+        if self.n_layers==7:
+            self.gblocks = nn.ModuleList ([
+                fins_DecBlock(512, 512, z_len, 1,self.device),
+                fins_DecBlock(512, 512, z_len, 1,self.device),
+                fins_DecBlock(512, 256, z_len, 2,self.device),
+                fins_DecBlock(256, 256, z_len, 2,self.device),
+                fins_DecBlock(256, 256, z_len, 2,self.device),
+                fins_DecBlock(256, 128, z_len, 3,self.device),
+                fins_DecBlock(128, 64, z_len,8,self.device)
+            ])
+        elif self.n_layers==5:
+            self.gblocks = nn.ModuleList ([
+                fins_DecBlock(512, 512, z_len, 1,self.device),
+                fins_DecBlock(512, 256, z_len, 3,self.device),
+                fins_DecBlock(256, 256, z_len, 4,self.device),
+                fins_DecBlock(256, 128, z_len, 4,self.device),
+                fins_DecBlock(128, 64, z_len,4,self.device)
+            ])
+        else:
+            "a decoder with this number of blocks is not yet implemented"
+        
         self.postprocess = nn.Sequential(
             customConv1d(64, 1, kernel_size=3),
             nn.Tanh()
@@ -602,7 +617,7 @@ class fins_encdec(nn.Module):
         self.sig_len = args.sig_len #input waveform
         self.l_len = args.btl_len # bottleneck embedding
         self.z_len = args.enc_len # conditioning vector
-        self.n_layers = args.n_layers_revenc # number of encoder blocks
+        self.n_layers = args.n_layers_enc # number of encoder blocks
         self.device = args.device
 
         self.encode = fins_encoder(x_len=self.sig_len, l_len=self.l_len, N_layers=self.n_layers)
@@ -641,7 +656,7 @@ if __name__ == "__main__":
     args.enc_len = 128
     args.btl_len = 512
     args.n_layers_revenc = 12
-    args.n_layers_waveunet = 12
+    args.n_layers_enc = 12
     args.gauss_len = 5
     args.device="cpu"
 
@@ -686,7 +701,7 @@ if __name__ == "__main__":
     # print(f" output shape: {v_bottleneck.shape}")
 
     # # check fins decoder 
-    # model=fins_decoder(in_channels=1,z_len=args.enc_len*2,device=args.device).to(args.device)
+    # model=fins_decoder(in_channels=1,z_len=args.enc_len*2,device=args.device,N_layers=5).to(args.device)
     # model.eval()
     # s_target=model(v_bottleneck,reverb_emb)
     # summary(model,[(1, args.btl_len),(1, args.enc_len)],device=args.device) # torch summary expects 2 dim input for 1d conv
@@ -702,14 +717,14 @@ if __name__ == "__main__":
     # print(f" output shape: {s_target.shape}")
 
 
-    # check full conditional encoder-decoder model
-    cond_generator = ReverbEncoder(args)
-    autoencoder = fins_encdec(args)
-    model=cond_reverb_transfer(autoencoder,cond_generator).to(args.device)
-    s_style=model(s_content,s_style)
-    summary(model,[(1, args.sig_len),(1, args.sig_len)],device=args.device) # torch summary expects 2 dim input for 1d conv
-    print(f"fins enc-dec input shape: {s_content.shape}")
-    print(f" output shape: {s_style.shape}")
+    # # check full conditional encoder-decoder model
+    # cond_generator = ReverbEncoder(args)
+    # autoencoder = fins_encdec(args)
+    # model=cond_reverb_transfer(autoencoder,cond_generator).to(args.device)
+    # s_style=model(s_content,s_style)
+    # summary(model,[(1, args.sig_len),(1, args.sig_len)],device=args.device) # torch summary expects 2 dim input for 1d conv
+    # print(f"fins enc-dec input shape: {s_content.shape}")
+    # print(f" output shape: {s_style.shape}")
 
 
   
