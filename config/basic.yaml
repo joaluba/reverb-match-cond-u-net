@@ -1,0 +1,53 @@
+# general arguments
+projectdir: /home/ubuntu/joanna/reverb-match-cond-u-net/
+savedir: /home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/
+device: cuda
+fs: 48000 
+
+# data and model parameters
+sig_len: 98304 
+rev_emb_len: 512 
+btl_len: 512
+gauss_len: 3
+n_blocks_revenc: 8
+n_blocks_enc: 12
+n_layers_dec: 7
+symmetric_film: 1
+
+
+# dataset parameters
+style_rir: /home/ubuntu/Data/ACE-Single/Lecture_Room_1/1/Single_508_1_RIR.wav
+content_rir: null
+df_metadata: /home/ubuntu/joanna/reverb-match-cond-u-net/dataset-metadata/nonoise_48khz_guestxr.csv
+p_noise: 0.7
+
+# training arguments
+modeltype: c_wunet
+num_epochs: 300
+checkpoint_step: 10
+batch_size: 8
+learn_rate: 0.0001
+optimizer: adam
+losstype: stft
+loss_alphas: [[1]]
+store_outputs: 1
+split: train
+
+# arguments to resume training
+resume_checkpoint: null
+resume_tboard: null
+
+# evaluation arguments
+device: cuda
+batch_size_eval: 16
+checkpoint_development: 0
+eval_file_name: eval_all.csv
+eval_dir: /home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/
+eval_split: test
+rt60diffmin: -3
+rt60diffmax: 3
+N_datapoints: 1000
+train_results_file: /home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/18-01-2024--00-56_many-to-many_stft/checkpoint_best.pt
+eval_tag: 18-01-2024--00-56_many-to-many_stft
+train_args_file: /home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/18-01-2024--00-56_many-to-many_stft/trainargs.pt
+savedir: /home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/

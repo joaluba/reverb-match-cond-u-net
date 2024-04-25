@@ -1,17 +1,11 @@
-import torch
-from tqdm import tqdm
-from datetime import datetime
-import time
-import sys
 import os
-from torch.utils.tensorboard import SummaryWriter
+import yaml
 from itertools import product
-import json
-# my modules
-import dataset
-import models
+from datetime import datetime
+# load my modules
 import trainer
-from options import Options
+import helpers as hlp
+
 
 
 def exp_combinations_to_file(combinations, file_path):
@@ -52,7 +46,6 @@ def get_msg_for_exp_log(message):
 
 if __name__ == "__main__":
 
-
     # Prompt user for input with a message
     user_message = get_msg_for_exp_log("Enter info for experiment log")
 
@@ -60,41 +53,26 @@ if __name__ == "__main__":
     with open("/home/ubuntu/joanna/reverb-match-cond-u-net/experiment_log.txt", "a") as file:
         file.write(user_message)
 
-    # load default arguments
-    args = Options().parse()
+    # load default parameters
+    config = hlp.load_config("basic.yaml")
 
-    # args for all conditions in this exp
-    args.num_epochs=300
-    args.enc_len=512
-    args.n_layers_revenc=8
-    args.btl_len=512
-    args.n_layers_enc=12
-    args.n_layers_dec=7
-    args.symmetric_film=1
-
-    # Conditions of the experiment to permute
-    perm_cond_trasf_type = ["many-to-many"]
+    # Permuting parameters
+    perm_p_noise = [0.7, 0]
     perm_model_types=["c_wunet", "c_varwunet"]
-
-    # Additional conditions
-    cond_alphas=[[1],[1,1]]
-    cond_losses=["stft","stft+vae"]
 
     # Conditions combinations list
     from itertools import product
-
-    # Generate all combinations
     cond_combinations = []
-    for combo in product(perm_cond_trasf_type, perm_model_types):
+    for combo in product(perm_p_noise, perm_model_types):
         combination_dict = {
-            'cond_trasf_type': combo[0],
-            'cond_model': combo[1]
+            'p_noise': combo[0],
+            'modeltype': combo[1]
             }
         cond_combinations.append(combination_dict)
 
     # Create folder for storing results of this experiment
     date_tag = datetime.now().strftime("%d-%m-%Y")
-    runexp_savepath=os.path.join(args.savedir,"runs-exp-"+date_tag)
+    runexp_savepath=os.path.join(config["savedir"],"runs-exp-"+date_tag)
     if not os.path.exists(runexp_savepath):
         os.makedirs(runexp_savepath)
 
@@ -106,47 +84,34 @@ if __name__ == "__main__":
     for i, combination in enumerate(cond_combinations, start=0):
 
         # prepare params for this combination 
-        transf_type=combination["cond_trasf_type"]
+        config["p_noise"] =combination["p_noise"]
+        config["modeltype"] = combination["modeltype"]
 
-        if transf_type=="one-to-many":
-            args.content_rir="anechoic"
-            args.style_rir=None
-            # best params for one-to-many
-            args.learn_rate = 1e-4
-            args.batch_size = 8
-        elif transf_type=="many-to-many":
-            args.content_rir=None
-            args.style_rir=None
-            # best params for many-to-many
-            args.learn_rate = 1e-4
-            args.batch_size = 8
-
-        args.modeltype=combination["cond_model"]
-        args.losstype=cond_losses[i]
-        args.loss_alphas=cond_alphas[i]
+        if config["modeltype"]=="c_wunet":
+            config["losstype"] = "stft"
+            config["loss_alphas"] = [1]
+        elif config["modeltype"]=="c_varwunet":
+            config["losstype"] = "stft+vae"
+            config["loss_alphas"] = [1,1]
 
         # create training tags based on date and params
         date_tag = datetime.now().strftime("%d-%m-%Y--%H-%M")
-        loss_tag = "_"+ args.losstype
-        transf_tag="_"+ transf_type
-        model_tag ="_"+ args.modeltype
-        alpha_tag="_"+ '_'.join(map(str, args.loss_alphas))
+        p_noise_tag = "_p"+ str(config["p_noise"])
+        loss_tag = "_"+ config["losstype"] 
+        model_tag ="_"+ config["modeltype"]
+        alpha_tag="_"+ '_'.join(map(str, config["loss_alphas"]))
         # create one long training tag
-        tag = date_tag + transf_tag + model_tag + loss_tag + alpha_tag
-        # prepare diectory for this training combination
-        args.savedir=os.path.join(runexp_savepath,tag) 
+        tag = date_tag  + model_tag + loss_tag + alpha_tag
 
-        # # resume training 
-        # args.savedir="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-19-02-2024/19-02-2024--14-58_many-to-many_stft+rev+emb_1_1_1"
-        # args.resume_checkpoint="checkpointbest.pt"
-        # args.resume_tboard=args.savedir
+        # prepare diectory for this training combination
+        config["savedir"]=os.path.join(runexp_savepath,tag) 
 
         # train with current parameters
-        new_experiment=trainer.Trainer(args)
+        new_experiment=trainer.Trainer(config)
         new_experiment.train()
 
         # note down finished condition
-        note_down_finished_cond(condfilepath,lines[cond_count], args.savedir)
+        note_down_finished_cond(condfilepath,lines[cond_count], config["savedir"])
         cond_count+=1
         
 

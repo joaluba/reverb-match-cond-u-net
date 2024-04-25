@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchsummary import summary
 import numpy as np
-from options import Options
+import helpers as hlp
 
 # --------------------------------------------------------------------------------------------------
 # ----------------------------------------- CONDITIONING: ------------------------------------------
@@ -58,12 +58,12 @@ class ReverbEncoderBlock(nn.Module):
 
 class ReverbEncoder(nn.Module):
     # -------- Encoder: --------
-    def __init__(self, args):
+    def __init__(self, config):
         super().__init__() 
         # constants
-        self.sig_len=args.sig_len
-        self.z_len=args.enc_len
-        self.N_layers=args.n_layers_revenc
+        self.sig_len=config["sig_len"]
+        self.z_len=config["rev_emb_len"]
+        self.N_layers=config["n_blocks_revenc"]
         # internal parameters of the network:
         kernel_size=15
         stride=2
@@ -141,13 +141,13 @@ class waveunet_UpSamplingLayer(nn.Module):
 
 class waveunet(nn.Module):
     # ------- Standard wave-u-net encoder-decoder ------
-    def __init__(self, args):
+    def __init__(self, config):
         super().__init__()
         # constants:
-        self.n_layers = args.n_layers_enc
-        self.z_channels = args.enc_len 
+        self.n_layers = config["n_blocks_enc"]
+        self.z_channels = config["rev_emb_len"]
         self.channels_interval = 24
-        self.symmetric_film = bool(args.symmetric_film)
+        self.symmetric_film = bool(config["symmetric_film"])
         # encoder:
         encoder_in_channels_list = [1] + [i * self.channels_interval for i in range(1, self.n_layers)]
         # [1, 24, 48, 72, 96, 120, 144, 168, 192, 216, 240, 264]
@@ -228,15 +228,15 @@ class waveunet(nn.Module):
 
 class varwaveunet(nn.Module):
     # ------- Variational wave-u-net encoder-decoder ------
-    def __init__(self, args):
+    def __init__(self, config):
         super().__init__()
         # constants:
-        self.sig_len = args.sig_len
-        self.n_layers = args.n_layers_enc
-        self.z_channels = args.enc_len 
-        self.h_channels = args.gauss_len 
+        self.n_layers = config["n_blocks_enc"]
+        self.z_channels = config["rev_emb_len"]
         self.channels_interval = 24
-        self.symmetric_film = bool(args.symmetric_film)
+        self.h_channels = config["gauss_len"]
+        self.symmetric_film = bool(config["symmetric_film"])
+        self.sig_len = config["sig_len"]
         # encoder:
         encoder_in_channels_list = [1] + [int(i * self.channels_interval) for i in range(1, self.n_layers)]
         # [1, 24, 48, 72, 96, 120, 144, 168, 192, 216, 240, 264]
@@ -611,14 +611,14 @@ class fins_decoder(nn.Module):
 
 class fins_encdec(nn.Module):
     # -------- Encoder-Decoder: --------
-    def __init__(self, args):
+    def __init__(self, config):
         super().__init__()
 
-        self.sig_len = args.sig_len #input waveform
-        self.l_len = args.btl_len # bottleneck embedding
-        self.z_len = args.enc_len # conditioning vector
-        self.n_layers = args.n_layers_enc # number of encoder blocks
-        self.device = args.device
+        self.sig_len = config["sig_len"] #input waveform
+        self.l_len = config["btl_len"] # bottleneck embedding
+        self.z_len = config["rev_emb_len"] # conditioning vector
+        self.n_layers = config["n_blocks_enc"] # number of encoder blocks
+        self.device = config["device"]
 
         self.encode = fins_encoder(x_len=self.sig_len, l_len=self.l_len, N_layers=self.n_layers)
         self.decode = fins_decoder(in_channels=1,z_len=self.z_len*2,device=self.device)
@@ -648,83 +648,83 @@ if __name__ == "__main__":
 # ---- test definitions ----
     
     # load default parameters
-    args=Options().parse()
+    config = hlp.load_config("basic.yaml")
 
     # specify parameters of the model
-    args.fs = 48000
-    args.sig_len = 98304
-    args.enc_len = 128
-    args.btl_len = 512
-    args.n_layers_revenc = 12
-    args.n_layers_enc = 12
-    args.gauss_len = 5
-    args.device="cpu"
+    config["fs"] = 48000
+    config["sig_len"] = 98304
+    config["rev_emb_len"] = 128
+    config["btl_len"] = 512
+    config["n_blocks_revenc"] = 12
+    config["n_blocks_enc"] = 12
+    config["gauss_len"] = 5
+    config["device"]="cpu"
 
     # create random tensor with the size of the expected content signal
-    s_content=torch.randn(8,1,args.sig_len).to(args.device)
+    s_content=torch.randn(8,1,config["sig_len"]).to(config["device"])
     # create random tensor with the size of the expected style signal
-    s_style=torch.randn(8,1,args.sig_len).to(args.device)
-    reverb_emb=torch.randn(8,1,args.enc_len).to(args.device)
-    v_bottleneck=torch.randn(8,1,args.btl_len).to(args.device)
+    s_style=torch.randn(8,1,config["sig_len"]).to(config["device"])
+    reverb_emb=torch.randn(8,1,config["rev_emb_len"]).to(config["device"])
+    v_bottleneck=torch.randn(8,1,config["btl_len"]).to(config["device"])
     
 
     # # check reverb encoder
-    # model=ReverbEncoder(args).to(args.device)
+    # model=ReverbEncoder(config).to(config["device"])
     # model.eval()
     # reverb_emb=model(s_style)
-    # summary(model,(1, args.sig_len),device=args.device)# torch summary expects 2 dim input for 1d conv
+    # summary(model,(1, config["sig_len"]),device=config["device"])# torch summary expects 2 dim input for 1d conv
     # print(f"reverb encoder network input shape: {s_style.shape}")
     # print(f"reverb encoder network output shape: {reverb_emb.shape}")
 
     # # check waveunet 
-    # model=waveunet(args).to(args.device)
+    # model=waveunet(config).to(config["device"])
     # model.eval()
     # s_target=model(s_content,reverb_emb,reverb_emb)
-    # summary(model,[(1, args.sig_len),(1, args.enc_len),(1, args.enc_len)],device=args.device) # torch summary expects 2 dim input for 1d conv
+    # summary(model,[(1, config["sig_len"]),(1, config["rev_emb_len"]),(1, config["rev_emb_len"])],device=config["device"]) # torch summary expects 2 dim input for 1d conv
     # print(f"waveunet input shape: {s_content.shape}")
     # print(f" output shape: {s_target.shape}")
 
     # # check varwaveunet 
-    # model=varwaveunet(args).to(args.device)
+    # model=varwaveunet(config).to(config["device"])
     # model.eval()
     # s_target, mu, log_var =model(s_content,reverb_emb,reverb_emb)
-    # summary(model,[(1, args.sig_len),(1, args.enc_len),(1, args.enc_len)],device=args.device) # torch summary expects 2 dim input for 1d conv
+    # summary(model,[(1, config["sig_len"]),(1, config["rev_emb_len"]),(1, config["rev_emb_len"])],device=config["device"]) # torch summary expects 2 dim input for 1d conv
     # print(f"variational waveunet input shape: {s_content.shape}")
     # print(f" output shape: {s_target.shape}") # y_wave contains prediction, mean, std
 
     # # check fins encoder 
-    # model= fins_encoder(x_len=args.sig_len, l_len=args.btl_len, N_layers=args.n_layers_revenc).to(args.device)
+    # model= fins_encoder(x_len=config["sig_len"], l_len=config["btl_len"], N_layers=config["n_blocks_revenc"]).to(config["device"])
     # model.eval()
     # v_bottleneck=model(s_content,reverb_emb)
-    # summary(model,[(1, args.sig_len),(1, args.enc_len)],device=args.device) # torch summary expects 2 dim input for 1d conv
+    # summary(model,[(1, config["sig_len"]),(1, config["rev_emb_len"])],device=config["device"]) # torch summary expects 2 dim input for 1d conv
     # print(f"fins encoder input shape: {s_content.shape}")
     # print(f" output shape: {v_bottleneck.shape}")
 
     # # check fins decoder 
-    # model=fins_decoder(in_channels=1,z_len=args.enc_len*2,device=args.device,N_layers=5).to(args.device)
+    # model=fins_decoder(in_channels=1,z_len=config["rev_emb_len"]*2,device=config["device"],N_layers=5).to(config["device"])
     # model.eval()
     # s_target=model(v_bottleneck,reverb_emb)
-    # summary(model,[(1, args.btl_len),(1, args.enc_len)],device=args.device) # torch summary expects 2 dim input for 1d conv
+    # summary(model,[(1, config["btl_len"]),(1, config["rev_emb_len"])],device=config["device"]) # torch summary expects 2 dim input for 1d conv
     # print(f"fins decoder input shape: {s_content.shape}")
     # print(f" output shape: {s_target.shape}")
 
 
     # # check fins encoder-decoder  
-    # model=fins_encdec(args).to(args.device)
+    # model=fins_encdec(config).to(config["device"])
     # s_target=model(s_content,reverb_emb,reverb_emb)
-    # summary(model,[(1, args.sig_len),(1, args.enc_len),(1, args.enc_len)],device=args.device) # torch summary expects 2 dim input for 1d conv
+    # summary(model,[(1, config["sig_len"]),(1, config["rev_emb_len"]),(1, config["rev_emb_len"])],device=config["device"]) # torch summary expects 2 dim input for 1d conv
     # print(f"fins enc-dec input shape: {s_content.shape}")
     # print(f" output shape: {s_target.shape}")
 
 
-    # # check full conditional encoder-decoder model
-    # cond_generator = ReverbEncoder(args)
-    # autoencoder = fins_encdec(args)
-    # model=cond_reverb_transfer(autoencoder,cond_generator).to(args.device)
-    # s_style=model(s_content,s_style)
-    # summary(model,[(1, args.sig_len),(1, args.sig_len)],device=args.device) # torch summary expects 2 dim input for 1d conv
-    # print(f"fins enc-dec input shape: {s_content.shape}")
-    # print(f" output shape: {s_style.shape}")
+    # check full conditional encoder-decoder model
+    cond_generator = ReverbEncoder(config)
+    autoencoder = fins_encdec(config)
+    model=cond_reverb_transfer(autoencoder,cond_generator).to(config["device"])
+    s_style=model(s_content,s_style)
+    summary(model,[(1, config["sig_len"]),(1, config["sig_len"])],device=config["device"]) # torch summary expects 2 dim input for 1d conv
+    print(f"fins enc-dec input shape: {s_content.shape}")
+    print(f" output shape: {s_style.shape}")
 
 
   

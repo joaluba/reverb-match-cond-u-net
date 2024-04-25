@@ -9,6 +9,7 @@ from masp import shoebox_room_sim as srs
 from os.path import join as pjoin
 import colorednoise
 import random
+import yaml
 
 def place_on_circle(head_pos,r,angle_deg):
 # place a source around the reference point (like head)
@@ -159,6 +160,11 @@ def torch_load_mono(filename,sr_target):
         sig=torchaudio.transforms.Resample(sr,sr_target)(sig)
     return sig
 
+def unsqueezeif2D(x): 
+    if len(x.shape)<3:
+       x=x.unsqueeze(0)
+    return x
+
 
 def plotspectrogram(y, sr, n_fft,hop_length,title):
     # Compute STFT spectrogram
@@ -240,7 +246,10 @@ def gen_rand_colored_noise(p,L):
 
     return noise
 
-
+def load_config(config_name):
+    with open(pjoin("/home/ubuntu/joanna/reverb-match-cond-u-net/config/", config_name)) as file:
+        config = yaml.safe_load(file)
+    return config
 
 def torch_deconv_W(reverberant_signal, room_impulse_response):
     reverberant_signal=reverberant_signal.squeeze()

@@ -17,12 +17,11 @@ import loss_waveform
 
 
 class load_chosen_loss(torch.nn.Module):
-    def __init__(self,args):
+    def __init__(self,config,losstype):
         super().__init__()
-        self.args=args
-        self.losstype=args.losstype
-        self.load_criterions(args.device)
-
+        self.config=config
+        self.losstype=losstype
+        self.load_criterions(config["device"])
 
     def load_criterions(self,device):
         if self.losstype=="stft":
@@ -30,16 +29,19 @@ class load_chosen_loss(torch.nn.Module):
 
         elif self.losstype=="stft+vae":
             self.criterion_audio=loss_stft.MultiResolutionSTFTLoss().to(device)
-            # self.beta_schedule= [(i / (self.args.num_epochs/2)) if i < self.args.num_epochs/2 else 1 for i in range(self.args.num_epochs)]
-            self.beta_schedule= [1] * self.args.num_epochs
+            # self.beta_schedule= [(i / (self.config["num_epochs"]/2)) if i < self.config["num_epochs"]/2 else 1 for i in range(self.config["num_epochs"])]
+            self.beta_schedule= [1] * self.config["num_epochs"]
 
         elif self.losstype=="logmel+vae":
             self.criterion_audio=loss_mel.MultiMelSpectrogramLoss().to(device)
-            # self.beta_schedule= [(i / (self.args.num_epochs/2)) if i < self.args.num_epochs/2 else 1 for i in range(self.args.num_epochs)]
-            self.beta_schedule= [1] * self.args.num_epochs
+            # self.beta_schedule= [(i / (self.config["num_epochs"]/2)) if i < self.config["num_epochs"]/2 else 1 for i in range(self.config["num_epochs"])]
+            self.beta_schedule= [1] * self.config["num_epochs"]
 
         elif self.losstype=="logmel":
             self.criterion_audio=loss_mel.MultiMelSpectrogramLoss().to(device)
+        
+        elif self.losstype=="wave":
+            self.criterion_audio=loss_waveform.MultiWindowShapeLoss().to(device)
 
         elif self.losstype=="stft+emb":
             self.criterion_audio=loss_stft.MultiResolutionSTFTLoss().to(device)
@@ -57,7 +59,7 @@ class load_chosen_loss(torch.nn.Module):
         # forward pass - get prediction of the ir
         embStyle=model_combined.conditioning_network(sStyle_in)
         sPrediction=model_combined(sContent_in,sStyle_in)
-        if bool(self.args.is_vae):
+        if bool(self.config["is_vae"]):
             sPrediction, mu, log_var = sPrediction
 
         if self.losstype=="stft":
@@ -70,6 +72,11 @@ class load_chosen_loss(torch.nn.Module):
             L_logmel = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
             L = [L_logmel]
             L_names =["L_logmel"]
+
+        elif self.losstype=="wave":
+            L_wave = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
+            L = [L_wave]
+            L_names =["L_wave"]
 
         elif self.losstype=="stft+vae":
             L_sc, L_mag = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
@@ -94,7 +101,7 @@ class load_chosen_loss(torch.nn.Module):
             L_names = ["L_stft", "L_emb"]
 
         else:
-            print("this loss is not implemented")
+            print("the forward for this loss is not implemented")
 
         return L, L_names
     

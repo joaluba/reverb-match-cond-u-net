@@ -100,3 +100,20 @@
 [2024-04-22-12:31:00] testing with revenc 12, enc_len 128 and joint opt but without lr update
 [2024-04-22-17:53:01] trying to recover the settings that lead to better results
 [2024-04-23-17:10:51] bla
+[2024-04-24-13:07:35] bla
+[2024-04-24-13:10:34] bla
+[2024-04-24-15:45:35] running wunet and varunet with noise, joint optim, after changing the config style
+[2024-04-24-15:49:20] blabla
+[2024-04-24-15:50:57] same
+[2024-04-24-15:51:51] same
+[2024-04-24-15:53:49] same
+[2024-04-24-15:54:17] same
+[2024-04-24-15:57:32] same 
+[2024-04-24-16:02:20] same
+[2024-04-24-16:06:34] same debug
+[2024-04-24-16:12:54] same
+[2024-04-24-16:14:25] same
+[2024-04-24-16:16:03] pilot for the described thing
+[2024-04-24-16:19:11] same
+[2024-04-24-16:37:44] same
+[2024-04-24-17:33:09] starting the real experiment - 4 conditions, 300 epochs each 

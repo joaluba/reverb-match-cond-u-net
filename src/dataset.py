@@ -12,21 +12,21 @@ import scipy.signal as signal
 
 class DatasetReverbTransfer(Dataset):
 
-    def __init__(self,args):
-        self.df_ds=pd.read_csv(args.df_metadata,index_col=0) # pd data frame with metadata 
-        self.df_ds = self.df_ds[self.df_ds["split"]==args.split] 
+    def __init__(self,config):
+        self.df_ds=pd.read_csv(config["df_metadata"],index_col=None) # pd data frame with metadata 
+        self.df_ds = self.df_ds[self.df_ds["split"]==config["split"]].reset_index()
         # Create a custom index with consecutive pairs
         # (a datapoint will constist of a mixture of two signals)
         custom_index = np.repeat(np.arange(len(self.df_ds)//2), 2)
         self.df_ds = self.df_ds.copy() # to prevent "SettingWithCopy" warning
         self.df_ds.loc[:, "pair_idx"] = custom_index
-        self.sig_len=args.sig_len # length of input waveform 
-        self.fs=args.fs # sampling rate
-        self.split = args.split # train/test/val
-        self.device=args.device
-        self.content_ir=args.content_rir
-        self.style_ir=args.style_rir
-        self.p_noise=args.p_noise
+        self.sig_len=config["sig_len"] # length of input waveform 
+        self.fs=config["fs"] # sampling rate
+        self.split = config["split"] # train/test/val
+        self.device=config["device"]
+        self.content_ir=config["content_rir"]
+        self.style_ir=config["style_rir"]
+        self.p_noise=config["p_noise"]
 
     def __len__(self):
         return int(len(self.df_ds)/2)
@@ -94,7 +94,7 @@ class DatasetReverbTransfer(Dataset):
     def get_idx_with_rt60diff(self,diff_rt60_min,diff_rt60_max):
         # create column diff_rt60 to compute difference in rt60 between content and style audio
         self.df_ds["diff_rt60"] = self.df_ds["rt60_true"].diff()
-        self.df_ds["diff_rt60"][0::2]=self.df_ds["diff_rt60"][1::2]
+        self.df_ds.loc[0::2, 'diff_rt60'] = self.df_ds['diff_rt60'].shift(periods=-1)
         # # check indices of datapoint where the rt60 for content is lower than rt60 for style
         selected=self.df_ds[(self.df_ds["diff_rt60"]>diff_rt60_min) & (self.df_ds["diff_rt60"]<diff_rt60_max)]
         selected=selected.iloc[::2]
