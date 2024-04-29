@@ -14,55 +14,73 @@ import soundfile as sf
 import random
 # my modules
 import dataset
-import loss 
-import models
+import loss_mel, loss_stft, loss_waveform
+import trainer
 import helpers as hlp
-from options import OptionsEval
 from torch.utils.data import Subset
 
 
 class Evaluator(torch.nn.Module):
-    def __init__(self,args_test):
+    def __init__(self,config,config_train):
         super().__init__()
-        self.args_test=args_test
-        self.args_train=torch.load(self.args_test.train_args_file)
-        self.args_train.symmetric_film=self.args_test.symmetric_film
-        # if we are on dacom we need to change the path of the dataset metadata (so far only this data was used)
-        # self.args_train.df_metadata="/home/Imatge/projects/reverb-match-cond-u-net/dataset-metadata/nonoise2_dacom.csv"
-        self.args_train.df_metadata="/home/ubuntu/joanna/reverb-match-cond-u-net/dataset-metadata/nonoise2_guestxr2.csv"
-        self.load_eval_objects()
+        self.config=config
+        self.config_train=config_train
+        self.model =trainer.load_chosen_model(config_train,config_train["modeltype"]).to(config["device"])
+        self.load_measures()
+        self.load_eval_dataset()
         self.failcount=0
+    
+    def load_measures(self):
+        device=self.config["device"]
 
-    def load_eval_objects(self):
-        # ---- MODELS: ----
-        self.model=self.load_chosen_model(self.args_train.modeltype).to(self.args_test.device)
-        # ---- LOSS CRITERIA: ----
-        self.criterion_stft_loss = loss.MultiResolutionSTFTLoss(
-            fft_sizes=[256, 512, 1024, 2048,4096],
-            hop_sizes=[64, 128, 256,512,1024],
-            win_lengths=[256, 512, 1024, 2048,4096],
-            window="hann_window").to(self.args_test.device)
-        self.criterion_logmel=loss.LogMelSpectrogramLoss().to(self.args_test.device)
-        self.criterion_si_sdr = ScaleInvariantSignalDistortionRatio().to(self.args_test.device)
-        self.criterion_srmr = SpeechReverberationModulationEnergyRatio(16000).to(self.args_test.device)
-        self.criterion_mse = torch.nn.MSELoss().to(self.args_test.device)
-        self.criterion_cosine = torch.nn.CosineSimilarity(dim=2,eps=1e-8).to(self.args_test.device)
-        self.criterion_pesq=PerceptualEvaluationSpeechQuality(16000, 'wb').to(self.args_test.device)
-        self.criterion_stoi=ShortTimeObjectiveIntelligibility(16000).to(self.args_test.device)
-        # ---- TRAINING RESULTS (WEIGHTS): ----
-        self.train_results=torch.load(args_test.train_results_file,map_location=self.args_test.device)
-        self.model.load_state_dict(self.train_results["model_state_dict"])
-        # ---- DATASETS: ----
-        self.args_train.split=self.args_test.eval_split
-        self.testset_orig=dataset.DatasetReverbTransfer(self.args_train)
-        indices_chosen=self.testset_orig.get_idx_with_rt60diff(self.args_test.rt60diffmin,self.args_test.rt60diffmax)
-        if self.args_test.N_datapoints>0:
-            # indices_chosen=random.sample(indices_chosen, self.args_test.N_datapoints)
-            indices_chosen=range(0,self.args_test.N_datapoints)
-        self.testset=Subset(self.testset_orig,indices_chosen)
+        self.measures=[]
+        self.measure_names=[]
+
+        self.measures_names.append("stft")
+        self.measures.append(loss_stft.MultiResolutionSTFTLoss().to(device))
+        
+        self.measures_names.append("mel")
+        self.measures.append(loss_mel.MultiMelSpectrogramLoss().to(device))
+
+        self.measures_names.append("wave")
+        self.measures.append(loss_waveform.MultiWindowShapeLoss().to(device))
+
+        self.measures_names.append("mse")
+        self.measures.append(torch.nn.MSELoss().to(device))
+
+        self.measures_names.append("sisdr")
+        self.measures.append(ScaleInvariantSignalDistortionRatio().to(device))
+        
+        self.measures_names.append("srmr")
+        self.measures.append(SpeechReverberationModulationEnergyRatio(16000).to(device))
+
+        self.measures_names.append("pesq")
+        self.measures.append(PerceptualEvaluationSpeechQuality(16000, 'wb').to(device))
+
+        self.measures_names.append("stoi")
+        self.measures.append(ShortTimeObjectiveIntelligibility(16000).to(device))
+
+        self.measures_names.append("emb_cos")
+        self.measures.append(torch.nn.CosineSimilarity(dim=2,eps=1e-8).to(device))
+
+    def load_eval_dataset(self):
+
+        rt60diffmin = self.config["rt60diffmin"]
+        rt60diffmax = self.config["rt60diffmin"]
+        N_datapoints = self.config["N_datapoints"]
+        batch_size_eval = self.config["batch_size_eval"]
+
+        # load a test split from the dataset used for training
+        self.config_train["split"] = "test" 
+        self.config_train["p_noise"] = 0 # for evaluation, we do not want noise 
+        self.testset_orig = dataset.DatasetReverbTransfer(self.config_train)
+        # choose a subset of the original test split
+        indices_chosen = self.testset_orig.get_idx_with_rt60diff(rt60diffmin,rt60diffmax)
+        if N_datapoints>0:
+            indices_chosen = range(0,N_datapoints)
+        self.testset = Subset(self.testset_orig,indices_chosen)
         print(f"Preparing to evaluate {len(self.testset)} test datapoints")
-        # ---- DATA LOADER: ----
-        self.testloader = torch.utils.data.DataLoader(self.testset, batch_size=self.args_test.batch_size_eval, shuffle=True, num_workers=6,pin_memory=True)
+        self.testloader = torch.utils.data.DataLoader(self.testset, batch_size=batch_size_eval, shuffle=True, num_workers=6,pin_memory=True)
 
     
     def infer(self,data):
@@ -186,29 +204,27 @@ class Evaluator(torch.nn.Module):
 
     
     
-def eval_condition(config,checkpoint_name):
+def eval_condition(config,exp_subdir,checkpoint_name):
         
-    subdir_path=config["subdir_path"]
-    eval_tag=pjoin(subdir_path).split('/')[-1]
+    eval_tag=pjoin(exp_subdir).split('/')[-1]
 
     # load results from checkpoints in the directory
-    for filename in os.listdir(subdir_path):
+    for filename in os.listdir(exp_subdir):
         if filename==checkpoint_name: 
 
             # specify training params file
-            config_train=hlp.load_config(pjoin(subdir_path,"train_config.yaml"))
+            config_train=hlp.load_config(pjoin(exp_subdir,"train_config.yaml"))
 
             # create evaluator object
             tmp_eval = Evaluator(config,config_train)
         
-            # load checkpoint file
-            checkpoint=pjoin(subdir_path,filename)
+            # checkpoint file path
+            checkpointpath=pjoin(exp_subdir,filename)
 
             # create evaluator object
-            tmp_eval = Evaluator(config,config_train)
+            df_subdir_losses=tmp_eval.eval_losses_batchproc(checkpointpath,eval_tag)
 
-            # create evaluator object
-            df_subdir_losses=tmp_eval.eval_losses_batchproc(checkpoint,eval_tag)
+            return df_subdir_losses
 
 
 def eval_experiment(config):
@@ -220,7 +236,7 @@ def eval_experiment(config):
         if os.path.isdir(subdir_path):
 
             print(f"Processing trainig results: {subdir_path}")
-            config["subdir_path"]=subdir_path
+            df_eval_condition=eval_condition(config,subdir_path,"checkpointbest.pt")
 
              
             df_all_losses.to_csv(args_test.eval_dir+args_test.eval_file_name, index=False)

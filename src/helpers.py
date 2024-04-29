@@ -251,6 +251,12 @@ def load_config(config_name):
         config = yaml.safe_load(file)
     return config
 
+def load_config_fins(file_path):
+    from easydict import EasyDict as ed
+    with open(file_path, encoding="utf-8") as f:
+        contents = yaml.load(f, Loader=yaml.FullLoader)
+    return ed(contents)
+
 def torch_deconv_W(reverberant_signal, room_impulse_response):
     reverberant_signal=reverberant_signal.squeeze()
     room_impulse_response=room_impulse_response.squeeze()
@@ -279,4 +285,5 @@ def rir_split_earlylate(rir, fs, cutpoint_ms):
     rir_early[:,:int(1e-3*cutpoint_ms*fs)]=rir[:,:int(1e-3*cutpoint_ms*fs)]
     rir_late[:,int(1e-3*cutpoint_ms*fs):]=rir[:,int(1e-3*cutpoint_ms*fs):]
     return rir_early, rir_late
-    
+
+

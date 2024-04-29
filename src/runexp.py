@@ -7,7 +7,6 @@ import trainer
 import helpers as hlp
 
 
-
 def exp_combinations_to_file(combinations, file_path):
     # Save combinations to text file
     with open(file_path, 'w') as file:

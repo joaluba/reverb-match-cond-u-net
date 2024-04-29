@@ -213,6 +213,7 @@ class Trainer(torch.nn.Module):
         metadata = self.config["df_metadata"]
         is_vae = self.config["is_vae"]
         fs = self.config["fs"]
+        device=self.config["device"]
 
         with torch.no_grad():
 
@@ -226,7 +227,7 @@ class Trainer(torch.nn.Module):
             for i in range(0,len(chosen_idx)):
                 data=self.trainset[chosen_idx[i]]
                 data = [data[i].unsqueeze(0) for i in range(len(data))]
-                sContent,_,sTarget, sPrediction=infer(self.model,data,self.device)
+                sContent,_,sTarget, sPrediction=infer(self.model,data,device)
                 if bool(is_vae):
                     sPrediction, _, _ = sPrediction
 
