@@ -53,7 +53,7 @@ if __name__ == "__main__":
         file.write(user_message)
 
     # load default parameters
-    config = hlp.load_config("basic.yaml")
+    config = hlp.load_config("/home/ubuntu/joanna/reverb-match-cond-u-net/config/basic.yaml")
 
     # Permuting parameters
     perm_p_noise = [0.7, 0]

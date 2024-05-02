@@ -15,7 +15,6 @@ import torch
 import torch.nn.functional as F
 
 
-
 def stft(x, fft_size, hop_size, win_length, window, eps=1e-7):
     """Perform STFT and convert to magnitude spectrogram.
 

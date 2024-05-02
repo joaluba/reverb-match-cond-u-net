@@ -33,35 +33,20 @@ class Evaluator(torch.nn.Module):
     def load_measures(self):
         device=self.config["device"]
 
-        self.measures=[]
-        self.measure_names=[]
-
-        self.measures_names.append("stft")
-        self.measures.append(loss_stft.MultiResolutionSTFTLoss().to(device))
-        
-        self.measures_names.append("mel")
-        self.measures.append(loss_mel.MultiMelSpectrogramLoss().to(device))
-
-        self.measures_names.append("wave")
-        self.measures.append(loss_waveform.MultiWindowShapeLoss().to(device))
-
-        self.measures_names.append("mse")
-        self.measures.append(torch.nn.MSELoss().to(device))
-
-        self.measures_names.append("sisdr")
-        self.measures.append(ScaleInvariantSignalDistortionRatio().to(device))
-        
-        self.measures_names.append("srmr")
-        self.measures.append(SpeechReverberationModulationEnergyRatio(16000).to(device))
-
-        self.measures_names.append("pesq")
-        self.measures.append(PerceptualEvaluationSpeechQuality(16000, 'wb').to(device))
-
-        self.measures_names.append("stoi")
-        self.measures.append(ShortTimeObjectiveIntelligibility(16000).to(device))
-
-        self.measures_names.append("emb_cos")
-        self.measures.append(torch.nn.CosineSimilarity(dim=2,eps=1e-8).to(device))
+        self.measures= {
+            "multi-stft" : loss_stft.MultiResolutionSTFTLoss().to(device), 
+            "multi-mel"  : loss_mel.MultiMelSpectrogramLoss().to(device),
+            "multi-wave" : loss_waveform.MultiWindowShapeLoss().to(device),
+            "stft" : loss_stft.STFTLoss().to(device), 
+            "logmel"  : loss_mel.LogMelSpectrogramLoss().to(device),
+            "wave" : loss_waveform.WaveformShapeLoss().to(device),
+            "mse" : torch.nn.MSELoss().to(device),
+            "sisdr" : ScaleInvariantSignalDistortionRatio().to(device),
+            # "srmr" : SpeechReverberationModulationEnergyRatio(16000).to(device),
+            "pesq" : PerceptualEvaluationSpeechQuality(16000, 'wb').to(device),
+            "stoi" : ShortTimeObjectiveIntelligibility(16000).to(device),
+            "emb_cos": torch.nn.CosineSimilarity(dim=2,eps=1e-8).to(device)
+        }
 
     def load_eval_dataset(self):
 
@@ -82,7 +67,6 @@ class Evaluator(torch.nn.Module):
         print(f"Preparing to evaluate {len(self.testset)} test datapoints")
         self.testloader = torch.utils.data.DataLoader(self.testset, batch_size=batch_size_eval, shuffle=True, num_workers=6,pin_memory=True)
 
-    
     def infer(self,data):
         # Function to infer target audio
         with torch.no_grad():
@@ -92,51 +76,27 @@ class Evaluator(torch.nn.Module):
             sTarget_prediction=self.model(sContent_in,sStyle_in)
             return sContent_in, sStyle_in, sTarget_gt, sTarget_prediction
         
-    def eval_losses_batchproc(config):
+    def compute_losses(self,checkpointpath,eval_tag):
 
-        df_subdir_losses=pd.DataFrame({'label':[],'idx':[], 'compared': [],
-                    'L_stft2': [], 'L_logmel': [],'L_wav_L2': [], 
-                    'L_si_sdr': [], 'L_srmr_x1': [],  'L_srmr_x2': [], 
-                    'L_pesq': [], 'L_stoi': [],   
-                    'L_emb_cosine': [], 'L_emb_euc': []})
+        train_results=torch.load(os.path.join(checkpointpath),map_location=self.config["device"])
+        self.model.load_state_dict(train_results["model_state_dict"])
 
-        subdir_path = os.path.join(args_test.eval_dir, args_test.eval_subdir)
+        eval_dict={}
+        for j, data in tqdm(enumerate(self.testloader),total = len(self.testloader)):
+            # get signals
+            sContent, sStyle, sTarget, sPrediction=self.infer(data)
+            if bool(self.config_train["is_vae"]):      
+                sPrediction, mu, log_var = sPrediction
+            # predicion : target
+            eval_dict.update(self.compute_losses_batch(j,eval_tag,"prediction:target",sPrediction,sTarget))
+            # content : target 
+            eval_dict.update(self.compute_losses_batch(j,eval_tag,"content:target",sContent,sTarget))
+            # predicion: content
+            eval_dict.update(self.compute_losses_batch(j,eval_tag,"prediction:content",sPrediction,sContent))
 
-        print(f"Comparing losses for {subdir_path}")
-
-        # load results from checkpoints in the directory
-        for filename in os.listdir(subdir_path):
-            if filename.startswith("checkpoint") & filename.endswith("best.pt"): # only computing measures for the best checkpoint
-                with torch.no_grad():
-                    # specify training params file
-                    args_test.train_args_file=pjoin(subdir_path,"trainargs.pt")
-                    # load checkpoint file
-                    args_test.train_results_file=pjoin(subdir_path,filename)
-                    # create tag for this evalauation
-                    args_test.eval_tag=args_test.train_results_file.split('/')[-2]
-                    # create evaluator object
-                    tmp_evaluation=Evaluator(args_test)
-
-                    for j, data in tqdm(enumerate(tmp_evaluation.testloader),total = len(tmp_evaluation.testloader)):
-                        # get signals
-                        sContent, sStyle, sTarget, sPrediction=tmp_evaluation.infer(data)
-                        if bool(tmp_evaluation.args_train.is_vae):      
-                            sPrediction, mu, log_var = sPrediction
-                        # predicion : target
-                        df_subdir_losses=pd.concat([df_subdir_losses, pd.DataFrame(tmp_evaluation.add_all_losses(j,"prediction:target",sPrediction,sTarget),index=[0])],ignore_index=True)
-                        # content : target 
-                        df_subdir_losses=pd.concat([df_subdir_losses, pd.DataFrame(tmp_evaluation.add_all_losses(j,"content:target",sContent,sTarget),index=[0])], ignore_index=True)
-                        # predicion: content
-                        df_subdir_losses=pd.concat([df_subdir_losses, pd.DataFrame(tmp_evaluation.add_all_losses(j,"prediction:content",sPrediction,sContent),index=[0])],ignore_index=True)
-
-        df_subdir_losses["label"]=args_test.eval_tag
-        df_subdir_losses.to_csv(pjoin(subdir_path, args_test.eval_tag + "_eval_batchproc.csv"), index=False)
-        print(f"Saved subdir results")
-        return df_subdir_losses
+        return eval_dict
         
-    
-
-    def add_all_losses(self,idx,comp_name,x1,x2):
+    def compute_losses_batch(self, idx, label, comp_name, x1, x2):
 
         if len(x1.shape)<3:
             x1=x1.unsqueeze(0)
@@ -145,64 +105,61 @@ class Evaluator(torch.nn.Module):
         x1_emb=self.model.conditioning_network(x1)
         x2_emb=self.model.conditioning_network(x2)
 
+        # Resample - losses operate on 16kHz sampling rate
         x1=hlp.torch_resample_if_needed(x1,48000,16000).to(self.args_test.device)
         x2=hlp.torch_resample_if_needed(x2,48000,16000).to(self.args_test.device)
+            
+        # # ----- Compute multi-resolution audio losses -----
+        # L_sc, L_mag = self.measures["multi-stft"](x1,x2)
+        # L_multi_stft = L_sc + L_mag
+        # L_multi_mel=self.measures["multi-mel"](x1,x2)
+        # L_multi_wave=self.measures["multi-wave"](x1,x2)
+        # # ----- Compute single-resolution audio losses -----
+        # L_sc, L_mag = self.measures["stft"](x1,x2)
+        # L_stft = L_sc + L_mag
+        # L_logmel=self.measures["logmel"](x1,x2)
+        # L_wave=self.measures["wave"](x1,x2)
+        # L_si_sdr=self.measures["sisdr"](x1,x2)
 
-
-        # ----- Compute audio losses -----
-        L_sc, L_mag = self.criterion_stft_loss(x1,x2)
-        L_stft = L_sc + L_mag
-        L_logmel=self.criterion_logmel(x1,x2)
-        L_wav_L2=self.criterion_mse(x1,x2)
-        L_si_sdr=self.criterion_si_sdr(x1,x2)
-        if comp_name=="prediction:target":
-            L_srmr=self.criterion_srmr(x1)
-            L_srmr_name="L_srmr_x1"
-        elif comp_name=="content:target":
-            L_srmr=self.criterion_srmr(x2)
-            L_srmr_name="L_srmr_x2"
-        elif comp_name=="prediction:content":
-            L_srmr=self.criterion_srmr(x2)
-            L_srmr_name="L_srmr_x2"
-
-        # ----- Compute embedding losses -----
-        L_emb_cosine=(1-((torch.mean(self.criterion_cosine(x1_emb,x2_emb))+ 1) / 2))
-        L_emb_euc=torch.dist(x1_emb,x2_emb)
+        # # ----- Compute embedding losses -----
+        # L_emb_cosine=(1-((torch.mean(self.measures["cosine"](x1_emb,x2_emb))+ 1) / 2))
+        # L_emb_euc=torch.dist(x1_emb,x2_emb)
         
         # ----- Compute perceptual losses -----
         L_pesq=torch.tensor([float('nan')])
         try:
-            L_pesq=self.criterion_pesq(x1,x2)
+            L_pesq=self.measures["pesq"](x1,x2)
         except: 
             self.failcount+=1
             print("Could not compute pesq for this signal for " + str(self.failcount) + "times")
 
         L_stoi=torch.tensor([float('nan')])
         try:
-            L_stoi=self.criterion_stoi(x1,x2)
+            L_stoi=self.measures["stoi"](x1,x2)
         except: 
             self.failcount+=1
             print("Could not compute stoi for this signal for " + str(self.failcount) + "times")
 
-
-        # if torch.isnan(L_stoi) or torch.isnan(L_pesq):
-            # for i in range(self.args_test.batch_size_eval):
-            #     x1i=x1[i,0].detach().cpu().numpy()
-            #     x2i=x2[i,0].detach().cpu().numpy()
-            #     sf.write(f"input_sig_{self.failcount}_{i}.wav", x1i, 16000)
-            #     sf.write(f"target_sig_{self.failcount}_{i}.wav", x2i, 16000)
-            # print("Saved faulty audios")
-
-        df_row={'idx':idx, 'compared': comp_name,
-                'L_stft2': L_stft.item(), 'L_logmel': L_logmel.item(),'L_wav_L2': L_wav_L2.item(), 
-                'L_si_sdr': L_si_sdr.item(), L_srmr_name: L_srmr.item(),
-                'L_pesq': L_pesq.item(), 'L_stoi': L_stoi.item(),  
-                'L_emb_cosine': L_emb_cosine.item(), 'L_emb_euc': L_emb_euc.item()}
+        # ----- Create a dictionary with loss values -----
+        dict_row={ 
+        'label': label,
+        'idx':idx, 
+        'compared': comp_name,
+        'multi-stft': (self.measures["multi-stft"](x1,x2)[0]+self.measures["multi-stft"](x1,x2)[1]).item(), 
+        'multi-mel': self.measures["multi-mel"](x1,x2).item(),
+        'wave': self.measures["multi-wave"](x1,x2).item(),
+        'stft': self.measures["stft"](x1,x2)[0]+self.measures["stft"](x1,x2)[1].item(),
+        'logmel': self.measures["logmel"](x1,x2).item(),
+        'wave': self.measures["wave"](x1,x2).item(),
+        'sisdr': self.measures["sisdr"](x1,x2).item(),
+        'pesq': L_pesq.item(), 
+        'stoi': L_stoi.item(),  
+        'emb_cosine': (1-((torch.mean(self.measures["cosine"](x1_emb,x2_emb))+ 1) / 2)).item(), 
+        'emb_euc': torch.dist(x1_emb,x2_emb).item()
+        }
         
-        return df_row
+        return dict_row
         
-
-    
     
 def eval_condition(config,exp_subdir,checkpoint_name):
         
@@ -221,8 +178,8 @@ def eval_condition(config,exp_subdir,checkpoint_name):
             # checkpoint file path
             checkpointpath=pjoin(exp_subdir,filename)
 
-            # create evaluator object
-            df_subdir_losses=tmp_eval.eval_losses_batchproc(checkpointpath,eval_tag)
+            # compute losses for a test dataset 
+            df_subdir_losses=tmp_eval.compute_losses(checkpointpath,eval_tag)
 
             return df_subdir_losses
 
@@ -230,26 +187,29 @@ def eval_condition(config,exp_subdir,checkpoint_name):
 def eval_experiment(config):
 
     eval_dir=config["eval_dir"]
+    eval_file_name=config["eval_file_name"]
 
+    dict_measures={}
     for subdir in os.listdir(eval_dir):
         subdir_path = os.path.join(eval_dir, subdir)
         if os.path.isdir(subdir_path):
 
             print(f"Processing trainig results: {subdir_path}")
-            df_eval_condition=eval_condition(config,subdir_path,"checkpointbest.pt")
+            dict_measures.update(eval_condition(config,subdir_path,"checkpointbest.pt"))
+            print(f"Updated results to contain measures for {subdir_path}")
 
              
-            df_all_losses.to_csv(args_test.eval_dir+args_test.eval_file_name, index=False)
+            pd.DataFrame(dict_measures).to_csv(eval_dir+eval_file_name, index=False)
             print(f"Saved final results")
 
 
 if __name__ == "__main__":
 
-    config=hlp.load_config("basic.yaml")
+    config=hlp.load_config(pjoin("/home/ubuntu/joanna/reverb-match-cond-u-net/config/basic.yaml"))
 
     # Compute for all examples
-    config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-19-04-2024/"
-    config["evalsavedir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-19-04-2024/"
+    config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-25-04-2024/"
+    config["evalsavedir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-25-04-2024/"
     config["N_datapoints"] = 0
     config["eval_file_name"] = "eval_all_batches.csv"
     config["rt60diffmin"] = -3

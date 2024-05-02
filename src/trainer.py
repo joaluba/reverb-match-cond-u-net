@@ -2,13 +2,14 @@ import torch
 from tqdm import tqdm
 from datetime import datetime
 import time
-import os
 from torch.utils.tensorboard import SummaryWriter
 # my modules
 import dataset
 import loss
 import models
 import helpers as hlp
+from os.path import join as pjoin
+import yaml
 
 class Trainer(torch.nn.Module):
     def __init__(self,config):
@@ -60,7 +61,7 @@ class Trainer(torch.nn.Module):
             self.start_epoch=0
             self.best_val_loss=float("inf")
         else:
-            checkpoint_path=os.path.join(savedir,resume_checkpoint)
+            checkpoint_path=pjoin(savedir,resume_checkpoint)
             train_results=torch.load(checkpoint_path,map_location=device)
             self.model.load_state_dict(train_results["model_state_dict"])           
             self.optimizer.load_state_dict(train_results["optimizer_state_dict"])
@@ -81,7 +82,8 @@ class Trainer(torch.nn.Module):
         checkpoint_step =self.config["checkpoint_step"]
 
         if (bool(store_outputs)):
-            torch.save(self.config, os.path.join(savedir,'train_config.yaml'))
+            with open(pjoin(savedir,'train_config.yaml'), 'w') as yaml_file:
+                yaml.dump(self.config, yaml_file, default_flow_style=False)
             print(self.config)
         
         # ------------- TRAINING START: -------------
@@ -248,13 +250,13 @@ class Trainer(torch.nn.Module):
                     'model_state_dict': self.model.state_dict(),
                     'optimizer_state_dict': self.optimizer.state_dict(),
                     'loss': loss_evol,
-                    }, os.path.join(savedir,'checkpoint' +name+'.pt'))
+                    }, pjoin(savedir,'checkpoint' +name+'.pt'))
         
 
 def load_train_results(datapath, exp_tag, train_tag):
-    config=torch.load(os.path.join(datapath,exp_tag,train_tag,"train_config.yaml"))
+    config=torch.load(pjoin(datapath,exp_tag,train_tag,"train_config.yaml"))
     config["device"]="cpu"
-    train_results=torch.load(os.path.join(datapath,exp_tag,train_tag,"checkpointbest.pt"),map_location=config["device"])
+    train_results=torch.load(pjoin(datapath,exp_tag,train_tag,"checkpointbest.pt"),map_location=config["device"])
     return config,train_results
 
 
@@ -297,7 +299,7 @@ if __name__ == "__main__":
     
     # ---- test training loop ----
 
-    config=hlp.load_config("basic.yaml")
+    config=hlp.load_config("/home/ubuntu/joanna/reverb-match-cond-u-net/config/basic.yaml")
     # set arguments for running a pilot training
     config["num_epochs"]=3
     config["checkpoint_step"]=1

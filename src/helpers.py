@@ -247,7 +247,7 @@ def gen_rand_colored_noise(p,L):
     return noise
 
 def load_config(config_name):
-    with open(pjoin("/home/ubuntu/joanna/reverb-match-cond-u-net/config/", config_name)) as file:
+    with open(config_name) as file:
         config = yaml.safe_load(file)
     return config
 

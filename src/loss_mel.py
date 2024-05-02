@@ -12,9 +12,26 @@
 """Mel-spectrogram loss modules."""
 
 import librosa
+import torchaudio
 import torch
 import torch.nn.functional as F
 
+
+
+class LogMelSpectrogramLoss(torch.nn.Module):
+    def __init__(self, sample_rate=48000, n_fft=2048, hop_length=512, n_mels=128):
+        super(LogMelSpectrogramLoss, self).__init__()
+        self.mel_spectrogram = torchaudio.transforms.MelSpectrogram(sample_rate=sample_rate, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels)
+        self.mse_loss = torch.nn.MSELoss()
+
+    def forward(self, predicted_audio, target_audio):
+        # Compute the log mel spectrogram for predicted and target audio
+        predicted_mel_spec = torch.log(self.mel_spectrogram(predicted_audio) + 1e-9)  # Add epsilon to avoid log(0)
+        target_mel_spec = torch.log(self.mel_spectrogram(target_audio) + 1e-9)
+
+        # Compute the MSE loss between log mel spectrograms of predicted and target audio
+        loss = self.mse_loss(predicted_mel_spec, target_mel_spec)
+        return loss
 
 class MelSpectrogram(torch.nn.Module):
     """Calculate Mel-spectrogram."""
