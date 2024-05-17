@@ -39,10 +39,10 @@ class Evaluator(torch.nn.Module):
             "multi-wave" : loss_waveform.MultiWindowShapeLoss().to(device),
             "stft" : loss_stft.STFTLoss().to(device), 
             "logmel"  : loss_mel.LogMelSpectrogramLoss().to(device),
-            "wave" : loss_waveform.WaveformShapeLoss().to(device),
+            "wave" : loss_waveform.WaveformShapeLoss(winlen=960).to(device),
             "mse" : torch.nn.MSELoss().to(device),
             "sisdr" : ScaleInvariantSignalDistortionRatio().to(device),
-            # "srmr" : SpeechReverberationModulationEnergyRatio(16000).to(device),
+            "srmr" : SpeechReverberationModulationEnergyRatio(16000).to(device),
             "pesq" : PerceptualEvaluationSpeechQuality(16000, 'wb').to(device),
             "stoi" : ShortTimeObjectiveIntelligibility(16000).to(device),
             "emb_cos": torch.nn.CosineSimilarity(dim=2,eps=1e-8).to(device)
@@ -51,7 +51,7 @@ class Evaluator(torch.nn.Module):
     def load_eval_dataset(self):
 
         rt60diffmin = self.config["rt60diffmin"]
-        rt60diffmax = self.config["rt60diffmin"]
+        rt60diffmax = self.config["rt60diffmax"]
         N_datapoints = self.config["N_datapoints"]
         batch_size_eval = self.config["batch_size_eval"]
 
@@ -68,35 +68,77 @@ class Evaluator(torch.nn.Module):
         self.testloader = torch.utils.data.DataLoader(self.testset, batch_size=batch_size_eval, shuffle=True, num_workers=6,pin_memory=True)
 
     def infer(self,data):
+        device= self.config["device"]
         # Function to infer target audio
         with torch.no_grad():
-            sContent_in = data[0].to(self.args_test.device)
-            sStyle_in=data[1].to(self.args_test.device)
-            sTarget_gt=data[2].to(self.args_test.device)
+            sContent_in = data[0].to(device)
+            sStyle_in=data[1].to(device)
+            sTarget_gt=data[2].to(device)
             sTarget_prediction=self.model(sContent_in,sStyle_in)
             return sContent_in, sStyle_in, sTarget_gt, sTarget_prediction
-        
+    
+
     def compute_losses(self,checkpointpath,eval_tag):
 
         train_results=torch.load(os.path.join(checkpointpath),map_location=self.config["device"])
         self.model.load_state_dict(train_results["model_state_dict"])
 
-        eval_dict={}
+        eval_dict_list=[]
         for j, data in tqdm(enumerate(self.testloader),total = len(self.testloader)):
             # get signals
             sContent, sStyle, sTarget, sPrediction=self.infer(data)
             if bool(self.config_train["is_vae"]):      
                 sPrediction, mu, log_var = sPrediction
             # predicion : target
-            eval_dict.update(self.compute_losses_batch(j,eval_tag,"prediction:target",sPrediction,sTarget))
+            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:target",sPrediction,sTarget))
             # content : target 
-            eval_dict.update(self.compute_losses_batch(j,eval_tag,"content:target",sContent,sTarget))
+            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"content:target",sContent,sTarget))
             # predicion: content
-            eval_dict.update(self.compute_losses_batch(j,eval_tag,"prediction:content",sPrediction,sContent))
+            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:content",sPrediction,sContent))
 
-        return eval_dict
+        return eval_dict_list
+    
+            
+    def compute_losses_detection(self,checkpointpath,eval_tag,fixed_mic_dist=None):
+
+        evalsavedir=self.config["evalsavedir"]
+        N_datapoints=self.config["N_datapoints"]
+        device=self.config["device"]
+        train_results=torch.load(os.path.join(checkpointpath),map_location=device)
+        self.model.load_state_dict(train_results["model_state_dict"])
+
+        eval_dict_list=[]
+        for j in range(0,N_datapoints):
+            # get signals: 
+            print(j)
+            signals, rirs =self.testset_orig.get_item_test(j, gen_rir_b=True, fixed_mic_dist=fixed_mic_dist)
+            with torch.no_grad():
+                sPrediction=self.model(signals["s1r1"].unsqueeze(0),signals["s1r2"].unsqueeze(0))
+                if bool(self.config_train["is_vae"]):      
+                    sPrediction, mu, log_var = sPrediction
+            # same source, RIRs from two different rooms
+            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"room1:room2",signals["s1r1"],signals["s1r2"]))
+            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"room1:room2 (early)",signals["s1r1_early"],signals["s1r2_early"]))
+            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"room1:room2 (late)",signals["s1r1_late"],signals["s1r2_late"]))
+            # same source, RIRs from the same room but different position 
+            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"room1a:room1b",signals["s1r1"],signals["s1r1b"]))
+            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"room1a:room1b (early)",signals["s1r1_early"],signals["s1r1b_early"]))
+            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"room1a:room1b (late)",signals["s1r1_late"],signals["s1r1b_late"]))
+            # predicion : target
+            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:target",sPrediction,signals["s1r2"]))
+            # predicion: content
+            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:content",sPrediction,signals["s1r1"]))
+
+            if j<10:
+                if not os.path.exists(pjoin(evalsavedir,'eval_extras')):
+                    os.mkdir(pjoin(evalsavedir,'eval_extras'))
+                torch.save(rirs, pjoin(evalsavedir,'eval_extras',"rirs_testsample"+ str(j)+ ".pt"))
+
+        return eval_dict_list
         
     def compute_losses_batch(self, idx, label, comp_name, x1, x2):
+
+        device= self.config["device"]
 
         if len(x1.shape)<3:
             x1=x1.unsqueeze(0)
@@ -105,26 +147,12 @@ class Evaluator(torch.nn.Module):
         x1_emb=self.model.conditioning_network(x1)
         x2_emb=self.model.conditioning_network(x2)
 
+        x1=x1.squeeze(1)
+        x2=x2.squeeze(1)
         # Resample - losses operate on 16kHz sampling rate
-        x1=hlp.torch_resample_if_needed(x1,48000,16000).to(self.args_test.device)
-        x2=hlp.torch_resample_if_needed(x2,48000,16000).to(self.args_test.device)
-            
-        # # ----- Compute multi-resolution audio losses -----
-        # L_sc, L_mag = self.measures["multi-stft"](x1,x2)
-        # L_multi_stft = L_sc + L_mag
-        # L_multi_mel=self.measures["multi-mel"](x1,x2)
-        # L_multi_wave=self.measures["multi-wave"](x1,x2)
-        # # ----- Compute single-resolution audio losses -----
-        # L_sc, L_mag = self.measures["stft"](x1,x2)
-        # L_stft = L_sc + L_mag
-        # L_logmel=self.measures["logmel"](x1,x2)
-        # L_wave=self.measures["wave"](x1,x2)
-        # L_si_sdr=self.measures["sisdr"](x1,x2)
+        x1=hlp.torch_resample_if_needed(x1,48000,16000).to(device)
+        x2=hlp.torch_resample_if_needed(x2,48000,16000).to(device)
 
-        # # ----- Compute embedding losses -----
-        # L_emb_cosine=(1-((torch.mean(self.measures["cosine"](x1_emb,x2_emb))+ 1) / 2))
-        # L_emb_euc=torch.dist(x1_emb,x2_emb)
-        
         # ----- Compute perceptual losses -----
         L_pesq=torch.tensor([float('nan')])
         try:
@@ -145,17 +173,21 @@ class Evaluator(torch.nn.Module):
         'label': label,
         'idx':idx, 
         'compared': comp_name,
-        'multi-stft': (self.measures["multi-stft"](x1,x2)[0]+self.measures["multi-stft"](x1,x2)[1]).item(), 
-        'multi-mel': self.measures["multi-mel"](x1,x2).item(),
-        'wave': self.measures["multi-wave"](x1,x2).item(),
-        'stft': self.measures["stft"](x1,x2)[0]+self.measures["stft"](x1,x2)[1].item(),
-        'logmel': self.measures["logmel"](x1,x2).item(),
-        'wave': self.measures["wave"](x1,x2).item(),
-        'sisdr': self.measures["sisdr"](x1,x2).item(),
-        'pesq': L_pesq.item(), 
-        'stoi': L_stoi.item(),  
-        'emb_cosine': (1-((torch.mean(self.measures["cosine"](x1_emb,x2_emb))+ 1) / 2)).item(), 
-        'emb_euc': torch.dist(x1_emb,x2_emb).item()
+        'L_multi-stft-sc': self.measures["multi-stft"](x1,x2)[0].item(),
+        'L_multi-stft-mag': self.measures["multi-stft"](x1,x2)[1].item(), 
+        'L_multi-mel': self.measures["multi-mel"](x1,x2).item(),
+        'L_multi-wave': self.measures["multi-wave"](x1,x2).item(),
+        'L_stft-sc': self.measures["stft"](x1,x2)[0].item(),
+        'L_stft-mag': self.measures["stft"](x1,x2)[1].item(),
+        'L_logmel': self.measures["logmel"](x1,x2).item(),
+        'L_wave': self.measures["wave"](x1,x2).item(),
+        'L_sisdr': self.measures["sisdr"](x1,x2).item(),
+        'L_srmr_1': self.measures["srmr"](x1).item(),
+        'L_srmr_2': self.measures["srmr"](x2).item(),
+        'L_pesq': L_pesq.item(), 
+        'L_stoi': L_stoi.item(),  
+        'L_emb_cos': (1-((torch.mean(self.measures["emb_cos"](x1_emb,x2_emb))+ 1) / 2)).item(), 
+        'L_emb_euc': torch.dist(x1_emb,x2_emb).item()
         }
         
         return dict_row
@@ -178,10 +210,13 @@ def eval_condition(config,exp_subdir,checkpoint_name):
             # checkpoint file path
             checkpointpath=pjoin(exp_subdir,filename)
 
-            # compute losses for a test dataset 
-            df_subdir_losses=tmp_eval.compute_losses(checkpointpath,eval_tag)
+            # compute losses for a test dataset
+            if config["evalscript"]=="basic":
+                eval_dict_list_condition=tmp_eval.compute_losses(checkpointpath,eval_tag)
+            elif config["evalscript"]=="detection":
+                eval_dict_list_condition=tmp_eval.compute_losses_detection(checkpointpath,eval_tag,fixed_mic_dist=config["fixed_mic_dist"])
 
-            return df_subdir_losses
+            return eval_dict_list_condition
 
 
 def eval_experiment(config):
@@ -189,17 +224,16 @@ def eval_experiment(config):
     eval_dir=config["eval_dir"]
     eval_file_name=config["eval_file_name"]
 
-    dict_measures={}
+    eval_dict_list_exp=[]
     for subdir in os.listdir(eval_dir):
         subdir_path = os.path.join(eval_dir, subdir)
-        if os.path.isdir(subdir_path):
+        if os.path.isdir(subdir_path) & (subdir!="eval_extras"):
 
             print(f"Processing trainig results: {subdir_path}")
-            dict_measures.update(eval_condition(config,subdir_path,"checkpointbest.pt"))
+            eval_dict_list_exp.extend(eval_condition(config,subdir_path,"checkpointbest.pt"))
             print(f"Updated results to contain measures for {subdir_path}")
 
-             
-            pd.DataFrame(dict_measures).to_csv(eval_dir+eval_file_name, index=False)
+            pd.DataFrame(eval_dict_list_exp).to_csv(eval_dir+eval_file_name, index=False)
             print(f"Saved final results")
 
 
@@ -207,29 +241,56 @@ if __name__ == "__main__":
 
     config=hlp.load_config(pjoin("/home/ubuntu/joanna/reverb-match-cond-u-net/config/basic.yaml"))
 
+    # # Compute for all examples
+    # config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-25-04-2024/"
+    # config["evalsavedir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-25-04-2024/"
+    # config["eval_file_name"] = "eval_all_batches.csv"
+    # config["rt60diffmin"] = -3
+    # config["rt60diffmax"] = 3
+    # config["N_datapoints"] = 0 # if 0 - whole test set included
+    # config["evalscript"]="basic"
+    # eval_experiment(config)
+
+    # # Compute for re-reverberation
+    # config["eval_file_name"] = "eval_rereverb.csv"
+    # config["rt60diffmin"] = -2
+    # config["rt60diffmax"] = -0.2
+    # config["N_datapoints"] = 10 # if 0 - whole test set included
+    # eval_experiment(config)
+
+    # # Compute for difficult de-reverberation
+    # config["eval_file_name"] = "eval_dereverb.csv"
+    # config["rt60diffmin"] = 0.2
+    # config["rt60diffmax"] = 2
+    # config["N_datapoints"] = 10 # if 0 - whole test set included
+    # eval_experiment(config)
+
+
     # Compute for all examples
-    config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-25-04-2024/"
-    config["evalsavedir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-25-04-2024/"
-    config["N_datapoints"] = 0
-    config["eval_file_name"] = "eval_all_batches.csv"
+    config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-09-05-2024/"
+    config["evalsavedir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-09-05-2024/"
+    config["eval_file_name"] = "eval_detection_fixedmicpos.csv"
     config["rt60diffmin"] = -3
     config["rt60diffmax"] = 3
-    config["N_datapoints"] = 0 # if 0 - whole test set included
-    eval_experiment(config)
+    config["N_datapoints"] = 1000 # if 0 - whole test set included
+    config["evalscript"]="detection"
+    config["fixed_mic_dist"]=0.1
+    eval_dict=eval_condition(config,pjoin(config["eval_dir"], "14-05-2024--23-12_c_wunet_stft_1"),"checkpointbest.pt")
+    pd.DataFrame(eval_dict).to_csv(config["eval_dir"]+config["eval_file_name"], index=False)
+    print(f"Saved detection analysis")
 
-    # Compute for re-reverberation
-    config["eval_file_name"] = "eval_rereverb.csv"
-    config["rt60diffmin"] = -2
-    config["rt60diffmax"] = -0.2
-    config["N_datapoints"] = 0 # if 0 - whole test set included
-    eval_experiment(config)
-
-    # Compute for difficult de-reverberation
-    config["eval_file_name"] = "eval_dereverb.csv"
-    config["rt60diffmin"] = 0.2
-    config["rt60diffmax"] = 2
-    config["N_datapoints"] = 0 # if 0 - whole test set included
-    eval_experiment(config)
+    # Compute for all examples
+    config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-09-05-2024/"
+    config["evalsavedir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-09-05-2024/"
+    config["eval_file_name"] = "eval_detection_randmicpos.csv"
+    config["rt60diffmin"] = -3
+    config["rt60diffmax"] = 3
+    config["N_datapoints"] = 1000 # if 0 - whole test set included
+    config["evalscript"]="detection"
+    config["fixed_mic_dist"]=None
+    eval_dict=eval_condition(config,pjoin(config["eval_dir"], "14-05-2024--23-12_c_wunet_stft_1"),"checkpointbest.pt")
+    pd.DataFrame(eval_dict).to_csv(config["eval_dir"]+config["eval_file_name"], index=False)
+    print(f"Saved detection analysis")
 
 
 

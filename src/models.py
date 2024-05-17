@@ -620,7 +620,7 @@ class fins_encdec(nn.Module):
         self.n_layers = config["n_blocks_enc"] # number of encoder blocks
         self.device = config["device"]
 
-        self.encode = fins_encoder(x_len=self.sig_len, l_len=self.l_len, N_layers=self.n_layers)
+        self.encode = fins_encoder(x_len=self.sig_len,z_len=self.z_len, l_len=self.l_len, N_layers=self.n_layers)
         self.decode = fins_decoder(in_channels=1,z_len=self.z_len*2,device=self.device)
 
     def forward(self,x,z_enc,z_dec):
@@ -648,12 +648,12 @@ if __name__ == "__main__":
 # ---- test definitions ----
     
     # load default parameters
-    config = hlp.load_config("basic.yaml")
+    config = hlp.load_config("/home/ubuntu/joanna/reverb-match-cond-u-net/config/basic.yaml")
 
     # specify parameters of the model
     config["fs"] = 48000
     config["sig_len"] = 98304
-    config["rev_emb_len"] = 128
+    config["rev_emb_len"] = 512
     config["btl_len"] = 512
     config["n_blocks_revenc"] = 12
     config["n_blocks_enc"] = 12
@@ -721,10 +721,10 @@ if __name__ == "__main__":
     cond_generator = ReverbEncoder(config)
     autoencoder = fins_encdec(config)
     model=cond_reverb_transfer(autoencoder,cond_generator).to(config["device"])
-    s_style=model(s_content,s_style)
+    s_target=model(s_content,s_style)
     summary(model,[(1, config["sig_len"]),(1, config["sig_len"])],device=config["device"]) # torch summary expects 2 dim input for 1d conv
     print(f"fins enc-dec input shape: {s_content.shape}")
-    print(f" output shape: {s_style.shape}")
+    print(f" output shape: {s_target.shape}")
 
 
   

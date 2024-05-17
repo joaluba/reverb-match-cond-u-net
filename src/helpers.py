@@ -1,6 +1,7 @@
 from acoustics.room import t60_impulse, c50_from_file
 import numpy as np
 import matplotlib.pyplot as plt
+import torch.nn.functional as F
 import torch
 import torchaudio
 import librosa
@@ -10,6 +11,7 @@ from os.path import join as pjoin
 import colorednoise
 import random
 import yaml
+from fft_conv_pytorch import fft_conv
 
 def place_on_circle(head_pos,r,angle_deg):
 # place a source around the reference point (like head)
@@ -173,25 +175,46 @@ def plotspectrogram(y, sr, n_fft,hop_length,title):
     librosa.display.specshow(librosa.amplitude_to_db(spectrogram**2, ref=np.max), sr=sr, hop_length=hop_length, x_axis='time', y_axis='log', vmin=-80, vmax=0)
     plt.title(title)
 
+def shiftby(sig, lag):
+    sig=sig.T
+    sig_out = torch.zeros_like(sig)
 
-def synch_sigs(sig1,sig2):
-    sig1_out=np.zeros(sig1.shape)
-    sig2_out=np.zeros(sig2.shape)
+    if lag > 0:
+        # add zeros at the beginning and cut the end
+        sig_cut = sig[0:-lag]
+        sig_cut = F.pad(sig_cut.T, (lag,0), mode='constant',value=0).T
+    elif lag < 0:
+        # cut the beginning of sig2
+        sig_cut = sig[-lag:]
+    else:
+        sig_cut=sig
+
+    sig_out[:sig_cut.shape[0]] = sig_cut
+    
+    return sig_out.T
+
+def synch_sig2(sig1, sig2):
+    sig1=sig1.T
+    sig2=sig2.T
+    sig2_out = torch.zeros_like(sig2)
     corr = signal.correlate(sig1, sig2, 'full')
     lag = signal.correlation_lags(len(sig1), len(sig2), mode='full')[np.argmax(corr)]
     if lag > 0:
-        sig2=sig2[0:-lag]
-        sig1=sig1[lag:]
+        # add zeros at the beginning and cut the end
+        sig2_cut = sig2[0:-lag]
+        sig2_cut = F.pad(sig2_cut.T, (lag,0), mode='constant',value=0).T
     elif lag < 0:
-        sig2=sig2[-lag:]
-        sig1=sig1[0:lag]
+        # cut the beginning of sig2
+        sig2_cut = sig2[-lag:]
+    else:
+        sig2_cut=sig2
 
-    sig1_out[:sig1.shape[0]]=sig1
-    sig2_out[:sig2.shape[0]]=sig2
-    return sig1_out,sig2_out, lag
+    sig2_out[:sig2_cut.shape[0]] = sig2_cut
+    
+    return sig1.T, sig2_out.T, lag
 
 
-def render_random_rir(room_x,room_y,room_z,rt60):
+def render_random_rir(room_x,room_y,room_z,rt60, fixed_mic_dist=None):
     # generate random rir from a room specified by the 
     # above 4 parameters
     # -------------------------------------------------------
@@ -200,7 +223,7 @@ def render_random_rir(room_x,room_y,room_z,rt60):
     mic_specs = np.array([[0, 0, 0, 1]]) # omni-directional
     fs_rir = 48000
     # create random src-rec position in the room 
-    mic_pos, src_pos= random_srcrec_in_room(room_x,room_y,room_z)
+    mic_pos, src_pos= random_srcrec_in_room(room_x,room_y,room_z,fixed_mic_dist)
     # receiver position (mono mic): 
     rec = np.array([[mic_pos[0], mic_pos[1], mic_pos[2]]])
     # source position
@@ -222,15 +245,48 @@ def render_random_rir(room_x,room_y,room_z,rt60):
     mic_rir = srs.render_rirs_mic(abs_echogram, band_centerfreqs, fs_rir)
     return mic_rir
 
-def random_srcrec_in_room(room_x,room_y,room_z):
+def batch_convolution(signal, filter):
+    """Performs batch convolution with pytorch fft convolution.
+    Args
+        signal : torch.FloatTensor (batch, n_channels, num_signal_samples)
+        filter : torch.FloatTensor (batch, n_channels, num_filter_samples)
+    Return
+        filtered_signal : torch.FloatTensor (batch, n_channels, num_signal_samples)
+    """
+    batch_size, n_channels, signal_length = signal.size()
+    _, _, filter_length = filter.size()
+
+    # Pad signal in the beginning by the filter size
+    padded_signal = torch.nn.functional.pad(signal, (filter_length, 0), 'constant', 0)
+
+    # Transpose : move batch to channel dim for group convolution
+    padded_signal = padded_signal.transpose(0, 1)
+
+    filtered_signal = fft_conv(padded_signal.double(), filter.double(), padding=0, groups=batch_size).transpose(0, 1)[
+        :, :, :signal_length
+    ]
+
+    filtered_signal = filtered_signal.type(signal.dtype)
+
+    return filtered_signal
+
+def random_srcrec_in_room(room_x,room_y,room_z,fixed_mic_dist=None):
     # mic_position - position randomly placed inside the room:
     mic_pos=[]
     mic_pos.append(np.random.uniform(low = 0.35*room_x, high = 0.65*room_x))
     mic_pos.append(np.random.uniform(low = 0.35*room_y, high = 0.65*room_y))
     mic_pos.append(np.random.uniform(low = 1., high = 2.))
     np.array(mic_pos)
+
     # source position always the same in reference to mic (close-mic):
-    src_pos = place_on_circle(np.array([mic_pos[0],mic_pos[1],mic_pos[2]]),0.1,0)
+    if fixed_mic_dist==None:
+        src_pos=[]
+        src_pos.append(np.random.uniform(low = 0.35*room_x, high = 0.65*room_x))
+        src_pos.append(np.random.uniform(low = 0.35*room_y, high = 0.65*room_y))
+        src_pos.append(np.random.uniform(low = 1., high = 2.))
+        np.array(src_pos)
+    else:
+        src_pos = place_on_circle(np.array([mic_pos[0],mic_pos[1],mic_pos[2]]),fixed_mic_dist,0)
     
     return mic_pos,src_pos
 

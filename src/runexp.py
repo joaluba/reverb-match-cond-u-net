@@ -56,15 +56,15 @@ if __name__ == "__main__":
     config = hlp.load_config("/home/ubuntu/joanna/reverb-match-cond-u-net/config/basic.yaml")
 
     # Permuting parameters
-    perm_p_noise = [0.7, 0]
-    perm_model_types=["c_wunet", "c_varwunet"]
+    perm_losses = ["logmel","logmel+wave"]
+    perm_model_types=["c_wunet"]
 
     # Conditions combinations list
     from itertools import product
     cond_combinations = []
-    for combo in product(perm_p_noise, perm_model_types):
+    for combo in product(perm_losses, perm_model_types):
         combination_dict = {
-            'p_noise': combo[0],
+            'losstype': combo[0],
             'modeltype': combo[1]
             }
         cond_combinations.append(combination_dict)
@@ -79,23 +79,20 @@ if __name__ == "__main__":
     condfilepath = os.path.join(runexp_savepath,"expconds_" + date_tag +".txt")
     lines=exp_combinations_to_file(cond_combinations,condfilepath)
 
-    cond_count=0
+    cond_count=0 
     for i, combination in enumerate(cond_combinations, start=0):
 
         # prepare params for this combination 
-        config["p_noise"] =combination["p_noise"]
+        config["losstype"] =combination["losstype"]
         config["modeltype"] = combination["modeltype"]
 
-        if config["modeltype"]=="c_wunet":
-            config["losstype"] = "stft"
+        if (config["losstype"] == "logmel"): 
             config["loss_alphas"] = [1]
-        elif config["modeltype"]=="c_varwunet":
-            config["losstype"] = "stft+vae"
-            config["loss_alphas"] = [1,1]
+        elif config["losstype"]=="logmel+wave":
+            config["loss_alphas"] = [0.8,0.2]
 
         # create training tags based on date and params
         date_tag = datetime.now().strftime("%d-%m-%Y--%H-%M")
-        p_noise_tag = "_p"+ str(config["p_noise"])
         loss_tag = "_"+ config["losstype"] 
         model_tag ="_"+ config["modeltype"]
         alpha_tag="_"+ '_'.join(map(str, config["loss_alphas"]))

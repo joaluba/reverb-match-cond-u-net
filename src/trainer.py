@@ -28,13 +28,17 @@ class Trainer(torch.nn.Module):
         resume_checkpoint=config["resume_checkpoint"]
         resume_tboard=config["resume_tboard"]
         savedir=config["savedir"]
+        trainscheme=config["trainscheme"]
 
         # ---- MODELS: ----
         self.model=load_chosen_model(config,modeltype).to(device)
 
         # ---- OPTIMIZERS: ----
-        if optimizer=="adam":
+        if trainscheme=="joint":
             self.optimizer =  torch.optim.AdamW(self.model.parameters(), learn_rate)
+        elif trainscheme=="separate":
+            self.optimizer_AE =  torch.optim.AdamW(self.model.autoencoder.parameters(), learn_rate)
+            self.optimizer_CN=  torch.optim.AdamW(self.model.conditioning_network.parameters(), learn_rate)
 
         # ---- LOSS CRITERION: ----
         self.criterion=loss.load_chosen_loss(config,losstype).to(device)
@@ -80,6 +84,8 @@ class Trainer(torch.nn.Module):
         device = self.config["device"]
         loss_alphas=self.config["loss_alphas"]
         checkpoint_step =self.config["checkpoint_step"]
+        trainscheme=self.config["trainscheme"]
+        
 
         if (bool(store_outputs)):
             with open(pjoin(savedir,'train_config.yaml'), 'w') as yaml_file:
@@ -91,9 +97,15 @@ class Trainer(torch.nn.Module):
         for epoch in range(self.start_epoch,num_epochs):
 
             # ----- Update learning rate: -----
-            self.learn_rate_update(epoch,20,0.5,self.optimizer)
-            print(f"Epoch {epoch+1}: Learning Rate: {self.optimizer.param_groups[0]['lr']}") 
+            if trainscheme=="joint":
+                # self.learn_rate_update(epoch,20,0.5,self.optimizer)
+                print(f"Epoch {epoch+1}: Learning Rate: {self.optimizer.param_groups[0]['lr']}") 
+            elif trainscheme=="separate":
+                # self.learn_rate_update(epoch,20,0.5,self.optimizer_CN)
+                # self.learn_rate_update(epoch,20,0.5,self.optimizer_AE)
+                print(f"Epoch {epoch+1}: Learning Rate: {self.optimizer_AE.param_groups[0]['lr']}") 
 
+            
             # ----- Training loop for this epoch: -----
             self.model.train()
             train_loss=0
@@ -114,11 +126,21 @@ class Trainer(torch.nn.Module):
                     # self.writer.add_scalar(loss_names[i], loss_term.item(), epoch * len(self.trainloader) + j) # tensorboard
                     
                 # empty gradient
-                self.optimizer.zero_grad()
+                if trainscheme=="joint":
+                    self.optimizer.zero_grad()
+                elif trainscheme=="separate":
+                    self.optimizer_AE.zero_grad()
+                    self.optimizer_CN.zero_grad()
+                
                 # compute gradients 
                 loss.backward()
+
                 # update weights
-                self.optimizer.step()
+                if trainscheme=="joint":
+                    self.optimizer.step()
+                elif trainscheme=="separate":
+                    self.optimizer_AE.step()
+                    self.optimizer_CN.step()
 
                 # add current batch loss to total epoch loss
                 train_loss += loss.item()
@@ -245,16 +267,29 @@ class Trainer(torch.nn.Module):
 
     def save_checkpoint(self,epoch,loss_evol,name):
         savedir = self.config["savedir"]
-        torch.save({
-                    'epoch': epoch,
-                    'model_state_dict': self.model.state_dict(),
-                    'optimizer_state_dict': self.optimizer.state_dict(),
-                    'loss': loss_evol,
-                    }, pjoin(savedir,'checkpoint' +name+'.pt'))
+        trainscheme=self.config["trainscheme"]
+        # update weights
+        if trainscheme=="joint":
+            torch.save({
+            'epoch': epoch,
+            'model_state_dict': self.model.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'loss': loss_evol,
+            }, pjoin(savedir,'checkpoint' +name+'.pt'))
+        elif trainscheme=="separate":
+            torch.save({
+            'epoch': epoch,
+            'model_state_dict': self.model.state_dict(),
+            'optimizer_AE_state_dict': self.optimizer_AE.state_dict(),
+            'optimizer_CN_state_dict': self.optimizer_CN.state_dict(),
+            'loss': loss_evol,
+            }, pjoin(savedir,'checkpoint' +name+'.pt'))
+
+
         
 
 def load_train_results(datapath, exp_tag, train_tag):
-    config=torch.load(pjoin(datapath,exp_tag,train_tag,"train_config.yaml"))
+    config=hlp.load_config(pjoin(datapath,exp_tag,train_tag,"train_config.yaml"))
     config["device"]="cpu"
     train_results=torch.load(pjoin(datapath,exp_tag,train_tag,"checkpointbest.pt"),map_location=config["device"])
     return config,train_results
@@ -278,6 +313,7 @@ def load_chosen_model(config,model_type):
         autoencoder=models.fins_encdec(config)
         condgenerator=models.ReverbEncoder(config)
         jointmodel=models.cond_reverb_transfer(autoencoder,condgenerator)
+        config["is_vae"]=0
         config["is_vae"]=0
 
     else:
