@@ -117,3 +117,22 @@
 [2024-04-24-16:19:11] same
 [2024-04-24-16:37:44] same
 [2024-04-24-17:33:09] starting the real experiment - 4 conditions, 300 epochs each 
+[2024-04-25-11:56:04] blA
+[2024-04-25-11:57:58] BL
+[2024-04-25-17:29:04] same but i realized this was doing a many-to-one transformation
+[2024-04-25-18:16:07] same
+[2024-05-08-12:17:09] testing fins
+[2024-05-08-12:37:06] testing conditioned fins
+[2024-05-08-17:00:12] testing again
+[2024-05-08-17:01:11] same
+[2024-05-08-23:20:45] pilot back to separated optimizer
+[2024-05-08-23:30:08] back to old separation of optimizers, new: gauss len = 5 and enc-dec using gan tts
+[2024-05-09-11:47:32] same
+[2024-05-17-16:02:02] searching for the setting that works, increased datapoints 
+[2024-05-17-16:02:56] pilot
+[2024-05-17-16:04:00] pilot
+[2024-05-17-16:09:01] pilot
+[2024-05-17-16:10:11] pilot
+[2024-05-17-16:14:42] pilot
+[2024-05-17-16:25:58] logmel, logmel+wave and looking for the best setting...
+[2024-05-17-16:28:27] same 
