@@ -288,10 +288,24 @@ class Trainer(torch.nn.Module):
 
         
 
-def load_train_results(datapath, exp_tag, train_tag):
-    config=hlp.load_config(pjoin(datapath,exp_tag,train_tag,"train_config.yaml"))
-    config["device"]="cpu"
-    train_results=torch.load(pjoin(datapath,exp_tag,train_tag,"checkpointbest.pt"),map_location=config["device"])
+def load_train_results(datapath, exp_tag, train_tag,configtype="yaml"):
+
+    if configtype=="yaml":
+        config=hlp.load_config(pjoin(datapath,exp_tag,train_tag,"train_config.yaml"))
+        config["device"]="cpu"
+        train_results=torch.load(pjoin(datapath,exp_tag,train_tag,"checkpointbest.pt"),map_location=config["device"])
+    elif configtype=="pt":
+        args=torch.load(pjoin(datapath,exp_tag,train_tag,"trainargs.pt"))
+        args.device="cpu"
+        train_results=torch.load(pjoin(datapath,exp_tag,train_tag,"checkpointbest.pt"),map_location=args.device)
+        config = {attr: getattr(args, attr) for attr in dir(args) if not attr.startswith('__') and not callable(getattr(args, attr))}
+        config["modeltype"]="c_wunet"
+        config_s=hlp.load_config("../config/old_params.yaml")
+        # Identify new parameters in conf2 not present in conf1
+        new_params = {key: config_s[key] for key in config_s if key not in config}
+        # Update conf1 with these new parameters
+        config.update(new_params)
+
     return config,train_results
 
 

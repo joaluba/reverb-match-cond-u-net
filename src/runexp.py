@@ -56,7 +56,7 @@ if __name__ == "__main__":
     config = hlp.load_config("/home/ubuntu/joanna/reverb-match-cond-u-net/config/basic.yaml")
 
     # Permuting parameters
-    perm_losses = ["logmel","logmel+wave"]
+    perm_losses = ["logmel+wave", "logmel"]
     perm_model_types=["c_wunet"]
 
     # Conditions combinations list
