@@ -71,7 +71,7 @@ class DatasetReverbTransfer(Dataset):
         s2r2 = torch.from_numpy(scipy.signal.fftconvolve(s2, r2,mode="full"))[:,:self.sig_len]
         s1r2 = torch.from_numpy(scipy.signal.fftconvolve(s1, r2,mode="full"))[:,:self.sig_len]
 
-        # # Synchronize all signals to anechoic
+        # # Synchronize all signals to anechoic signal
         _,s1r1,_ = hlp.synch_sig2(s1,s1r1)
         _,s1r2,_ = hlp.synch_sig2(s1,s1r2)
         _,s2r2,_ = hlp.synch_sig2(s2,s2r2)

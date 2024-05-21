@@ -9,7 +9,7 @@ sig_len: 98304
 rev_emb_len: 512 
 btl_len: 512
 gauss_len: 5
-n_blocks_revenc: 12
+n_blocks_revenc: 8
 n_blocks_enc: 12
 n_layers_dec: 7
 symmetric_film: 1
@@ -41,7 +41,7 @@ resume_tboard: null
 
 # evaluation arguments
 device: cuda
-batch_size_eval: 8
+batch_size_eval: 16
 checkpoint_development: 0
 eval_file_name: eval_all.csv
 eval_dir: /home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/

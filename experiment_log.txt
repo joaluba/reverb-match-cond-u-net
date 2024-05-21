@@ -136,3 +136,4 @@
 [2024-05-17-16:14:42] pilot
 [2024-05-17-16:25:58] logmel, logmel+wave and looking for the best setting...
 [2024-05-17-16:28:27] same 
+[2024-05-20-15:01:23] same but more epochs
