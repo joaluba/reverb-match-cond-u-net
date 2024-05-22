@@ -343,3 +343,31 @@ def rir_split_earlylate(rir, fs, cutpoint_ms):
     return rir_early, rir_late
 
 
+def truncate_ir_silence(ir, sample_rate, threshold_db=20):
+
+    ir= ir.squeeze(0)
+    # Normalize the data if necessary
+    ir = ir / torch.max(torch.abs(ir))
+
+    # Find the peak value
+    peak_value = torch.max(torch.abs(ir))
+
+    # Calculate the threshold (20 dB below the peak)
+    threshold_value = peak_value / (10 ** (threshold_db / 20))
+
+    # Find the peak index
+    peak_index = torch.argmax(torch.abs(ir))
+
+    # Find the last sample before the peak that is within the threshold
+    above_threshold_indices = torch.where(torch.abs(ir[:peak_index]) >= threshold_value)[0]
+    if len(above_threshold_indices) == 0:
+        last_sample_index = 0
+    else:
+        last_sample_index = above_threshold_indices[-1].item()
+
+    # Truncate the initial silence
+    truncated_ir = ir[last_sample_index:]
+
+    return truncated_ir.unsqueeze(0)
+
+

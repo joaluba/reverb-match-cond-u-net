@@ -120,7 +120,7 @@ class DatasetReverbTransfer(Dataset):
 
         return df
 
-    def get_item_test(self,index, gen_rir_b=False, fixed_mic_dist=None):
+    def get_item_test(self,index, gen_rir_b=False, fixed_mic_dist=None, truncate_rirs=True):
         # Pick pair of signals from metadata:
         df_pair=self.df_ds[self.df_ds["pair_idx"]==index]
         df_pair=df_pair.reset_index()
@@ -150,7 +150,7 @@ class DatasetReverbTransfer(Dataset):
             else:
                 print("loading r1 with fixed src-rec distance")
                 r1 = hlp.torch_load_mono(df_pair["ir_file_path"][0],self.fs)
-            if gen_rir_b: # generate 
+            if gen_rir_b: # generate rir from same room but different position
                 print("generating r1b with src-rec distance:" + str(fixed_mic_dist))
                 r1b_array =hlp.render_random_rir(df_pair["room_x"][0],df_pair["room_y"][0],df_pair["room_z"][0],df_pair["rt60_set"][0],fixed_mic_dist=fixed_mic_dist)
                 r1b= torch.tensor(r1b_array.T).squeeze(0).float()
@@ -171,6 +171,15 @@ class DatasetReverbTransfer(Dataset):
             
         else: 
             r2 = hlp.torch_load_mono(self.style_ir,self.fs)
+
+
+        # truncate silence in all rirs:
+        if truncate_rirs:
+            r1=hlp.truncate_ir_silence(r1, self.fs, threshold_db=20)
+            r1b=hlp.truncate_ir_silence(r1b, self.fs, threshold_db=20)
+            r2=hlp.truncate_ir_silence(r2, self.fs, threshold_db=20)
+
+
 
         # separate rirs into early and late 
         cutpoint_ms=50
