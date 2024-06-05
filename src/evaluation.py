@@ -241,56 +241,59 @@ if __name__ == "__main__":
 
     config=hlp.load_config(pjoin("/home/ubuntu/joanna/reverb-match-cond-u-net/config/basic.yaml"))
 
+    # Compute for all examples
+    config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
+    config["evalsavedir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
+    config["eval_file_name"] = "eval_all_batches.csv"
+    config["rt60diffmin"] = -3
+    config["rt60diffmax"] = 3
+    config["N_datapoints"] = 0 # if 0 - whole test set included
+    config["evalscript"]="basic"
+    eval_dict=eval_condition(config,pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2"),"checkpointbest.pt")
+    # eval_experiment(config)
+
+    # Compute for re-reverberation
+    config["eval_file_name"] = "eval_rereverb.csv"
+    config["rt60diffmin"] = -2
+    config["rt60diffmax"] = -0.2
+    config["N_datapoints"] = 0 # if 0 - whole test set included
+    eval_dict=eval_condition(config,pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2"),"checkpointbest.pt")
+    # eval_experiment(config)
+
+    # Compute for difficult de-reverberation
+    config["eval_file_name"] = "eval_dereverb.csv"
+    config["rt60diffmin"] = 0.2
+    config["rt60diffmax"] = 2
+    config["N_datapoints"] = 0 # if 0 - whole test set included
+    eval_dict=eval_condition(config,pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2"),"checkpointbest.pt")
+    # eval_experiment(config)
+
+
     # # Compute for all examples
     # config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-09-05-2024/"
     # config["evalsavedir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-09-05-2024/"
-    # config["eval_file_name"] = "eval_all_batches.csv"
+    # config["eval_file_name"] = "eval_detection_fixedmicpos.csv"
     # config["rt60diffmin"] = -3
     # config["rt60diffmax"] = 3
-    # config["N_datapoints"] = 0 # if 0 - whole test set included
-    # config["evalscript"]="basic"
-    # eval_experiment(config)
+    # config["N_datapoints"] = 1000 # if 0 - whole test set included
+    # config["evalscript"]="detection"
+    # config["fixed_mic_dist"]=0.1
+    # eval_dict=eval_condition(config,pjoin(config["eval_dir"], "14-05-2024--23-12_c_wunet_stft_1"),"checkpointbest.pt")
+    # pd.DataFrame(eval_dict).to_csv(config["eval_dir"]+config["eval_file_name"], index=False)
+    # print(f"Saved detection analysis")
 
-    # # Compute for re-reverberation
-    # config["eval_file_name"] = "eval_rereverb.csv"
-    # config["rt60diffmin"] = -2
-    # config["rt60diffmax"] = -0.2
-    # config["N_datapoints"] = 10 # if 0 - whole test set included
-    # eval_experiment(config)
-
-    # # Compute for difficult de-reverberation
-    # config["eval_file_name"] = "eval_dereverb.csv"
-    # config["rt60diffmin"] = 0.2
-    # config["rt60diffmax"] = 2
-    # config["N_datapoints"] = 10 # if 0 - whole test set included
-    # eval_experiment(config)
-
-
-    # Compute for all examples
-    config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-09-05-2024/"
-    config["evalsavedir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-09-05-2024/"
-    config["eval_file_name"] = "eval_detection_fixedmicpos.csv"
-    config["rt60diffmin"] = -3
-    config["rt60diffmax"] = 3
-    config["N_datapoints"] = 1000 # if 0 - whole test set included
-    config["evalscript"]="detection"
-    config["fixed_mic_dist"]=0.1
-    eval_dict=eval_condition(config,pjoin(config["eval_dir"], "14-05-2024--23-12_c_wunet_stft_1"),"checkpointbest.pt")
-    pd.DataFrame(eval_dict).to_csv(config["eval_dir"]+config["eval_file_name"], index=False)
-    print(f"Saved detection analysis")
-
-    # Compute for all examples
-    config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-09-05-2024/"
-    config["evalsavedir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-09-05-2024/"
-    config["eval_file_name"] = "eval_detection_randmicpos.csv"
-    config["rt60diffmin"] = -3
-    config["rt60diffmax"] = 3
-    config["N_datapoints"] = 1000 # if 0 - whole test set included
-    config["evalscript"]="detection"
-    config["fixed_mic_dist"]=None
-    eval_dict=eval_condition(config,pjoin(config["eval_dir"], "14-05-2024--23-12_c_wunet_stft_1"),"checkpointbest.pt")
-    pd.DataFrame(eval_dict).to_csv(config["eval_dir"]+config["eval_file_name"], index=False)
-    print(f"Saved detection analysis")
+    # # Compute for all examples
+    # config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-09-05-2024/"
+    # config["evalsavedir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-09-05-2024/"
+    # config["eval_file_name"] = "eval_detection_randmicpos.csv"
+    # config["rt60diffmin"] = -3
+    # config["rt60diffmax"] = 3
+    # config["N_datapoints"] = 1000 # if 0 - whole test set included
+    # config["evalscript"]="detection"
+    # config["fixed_mic_dist"]=None
+    # eval_dict=eval_condition(config,pjoin(config["eval_dir"], "14-05-2024--23-12_c_wunet_stft_1"),"checkpointbest.pt")
+    # pd.DataFrame(eval_dict).to_csv(config["eval_dir"]+config["eval_file_name"], index=False)
+    # print(f"Saved detection analysis")
 
 
 
