@@ -60,7 +60,7 @@ class load_chosen_loss(torch.nn.Module):
         sStyle_in=data[1].to(device) # s2r2 - style
         sTarget=data[2].to(device) # s1r2 - target
 
-        # forward pass - get prediction of the ir
+        # forward pass - get prediction 
         embStyle=model_combined.conditioning_network(sStyle_in)
         sPrediction=model_combined(sContent_in,sStyle_in)
         if bool(self.config["is_vae"]):

@@ -44,7 +44,7 @@ class DatasetReverbTransfer(Dataset):
         s1=hlp.get_nonsilent_frame(s1,self.sig_len)
         s2=hlp.get_nonsilent_frame(s2,self.sig_len)
 
-        # Apply phase shift or none
+        # Apply polarity or none
         s1*=np.random.choice([-1, 1])
         s2*=np.random.choice([-1, 1])
 
@@ -86,13 +86,13 @@ class DatasetReverbTransfer(Dataset):
         s1r1n1=hlp.torch_mix_and_set_snr(s1r1,n1,snr1)
         s2r2n2=hlp.torch_mix_and_set_snr(s2r2,n2,snr2)
 
-        # scale data but preserve symmetry
-        s1r1n1=hlp.torch_standardize_max_abs(s1r1n1) # Reverberant content sound
-        s2r2n2=hlp.torch_standardize_max_abs(s2r2n2) # Style sound
-        s1r2=hlp.torch_standardize_max_abs(s1r2) # Target
+        # scale data 
+        s1r1n1=hlp.torch_normalize_max_abs(s1r1n1) # Reverberant content sound
+        s2r2n2=hlp.torch_normalize_max_abs(s2r2n2) # Style sound
+        s1r2=hlp.torch_normalize_max_abs(s1r2) # Target
 
         # s2r1=hlp.torch_standardize_max_abs(s2r1) # "Flipped" target
-        s1=hlp.torch_standardize_max_abs(s1) # Anechoic content sound
+        s1=hlp.torch_normalize_max_abs(s1) # Anechoic content sound
 
         return s1r1n1, s2r2n2, s1r2, s1
     

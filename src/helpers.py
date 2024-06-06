@@ -58,7 +58,7 @@ def torch_standardize_std(sig_in):
     sig_out=(sig_in-mu)/sigma
     return sig_out
 
-def torch_standardize_max_abs(signal,out=False):
+def torch_normalize_max_abs(signal,out=False):
     max_abs_value = torch.max(torch.abs(signal))
     standardized_signal = signal / max_abs_value
     # standardized_signal -= torch.mean(standardized_signal)

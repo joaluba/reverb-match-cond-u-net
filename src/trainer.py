@@ -55,7 +55,7 @@ class Trainer(torch.nn.Module):
 
         # ---- DATA LOADERS: ----
         self.trainloader = torch.utils.data.DataLoader(self.trainset, batch_size=batch_size, shuffle=True, num_workers=6,pin_memory=True)
-        self.valloader = torch.utils.data.DataLoader(self.valset, batch_size=batch_size, shuffle=True, num_workers=6,pin_memory=True)
+        self.valloader = torch.utils.data.DataLoader(self.valset, batch_size=batch_size, shuffle=False, num_workers=6,pin_memory=True)
 
         # ---- PREPARE TRAINING LOOP (starting from scratch or resume training): ----
         if resume_checkpoint==None:

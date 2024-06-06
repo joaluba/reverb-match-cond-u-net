@@ -4,6 +4,9 @@ from itertools import product
 from datetime import datetime
 # load my modules
 import trainer
+import torch
+import random
+import numpy as np
 import helpers as hlp
 
 
@@ -45,6 +48,9 @@ def get_msg_for_exp_log(message):
 
 if __name__ == "__main__":
 
+    np.random.seed(0)
+    random.seed(0)
+    torch.manual_seed.seed(0)
     # Prompt user for input with a message
     user_message = get_msg_for_exp_log("Enter info for experiment log")
 
