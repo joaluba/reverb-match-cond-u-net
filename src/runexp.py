@@ -51,6 +51,7 @@ if __name__ == "__main__":
     np.random.seed(0)
     random.seed(0)
     torch.manual_seed.seed(0)
+    
     # Prompt user for input with a message
     user_message = get_msg_for_exp_log("Enter info for experiment log")
 
@@ -62,7 +63,7 @@ if __name__ == "__main__":
     config = hlp.load_config("/home/ubuntu/joanna/reverb-match-cond-u-net/config/basic.yaml")
 
     # Permuting parameters
-    perm_losses = ["logmel+wave", "logmel"]
+    perm_losses = ["stft+wave", "stft"]
     perm_model_types=["c_wunet"]
 
     # Conditions combinations list
@@ -76,7 +77,7 @@ if __name__ == "__main__":
         cond_combinations.append(combination_dict)
 
     # Create folder for storing results of this experiment
-    date_tag = datetime.now().strftime("%d-%m-%Y")
+    date_tag = "20-05-2024" #datetime.now().strftime("%d-%m-%Y")
     runexp_savepath=os.path.join(config["savedir"],"runs-exp-"+date_tag)
     if not os.path.exists(runexp_savepath):
         os.makedirs(runexp_savepath)
@@ -92,9 +93,9 @@ if __name__ == "__main__":
         config["losstype"] =combination["losstype"]
         config["modeltype"] = combination["modeltype"]
 
-        if (config["losstype"] == "logmel"): 
+        if (config["losstype"] == "stft"): 
             config["loss_alphas"] = [1]
-        elif config["losstype"]=="logmel+wave":
+        elif config["losstype"]=="stft+wave":
             config["loss_alphas"] = [0.8,0.2]
 
         # create training tags based on date and params

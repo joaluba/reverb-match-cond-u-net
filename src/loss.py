@@ -47,6 +47,10 @@ class load_chosen_loss(torch.nn.Module):
             self.criterion_audio1=loss_mel.MultiMelSpectrogramLoss().to(device)
             self.criterion_audio2=loss_waveform.MultiWindowShapeLoss().to(device)
 
+        elif self.losstype=="stft+wave":
+            self.criterion_audio1=loss_stft.MultiResolutionSTFTLoss().to(device)
+            self.criterion_audio2=loss_waveform.MultiWindowShapeLoss().to(device)
+
         elif self.losstype=="stft+emb":
             self.criterion_audio=loss_stft.MultiResolutionSTFTLoss().to(device)
             self.criterion_emb=torch.nn.CosineSimilarity(dim=2,eps=1e-8).to(device)
@@ -82,6 +86,12 @@ class load_chosen_loss(torch.nn.Module):
             L_wave = self.criterion_audio2(sTarget.squeeze(1), sPrediction.squeeze(1))
             L = [L_logmel,L_wave]
             L_names =["L_logmel","L_wave"]
+        
+        elif self.losstype=="stft+wave":
+            L_stft = self.criterion_audio1(sTarget.squeeze(1), sPrediction.squeeze(1))
+            L_wave = self.criterion_audio2(sTarget.squeeze(1), sPrediction.squeeze(1))
+            L = [L_stft,L_wave]
+            L_names =["L_stft","L_wave"]
 
         elif self.losstype=="wave":
             L_wave = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))

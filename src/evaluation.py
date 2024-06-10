@@ -65,7 +65,7 @@ class Evaluator(torch.nn.Module):
             indices_chosen = range(0,N_datapoints)
         self.testset = Subset(self.testset_orig,indices_chosen)
         print(f"Preparing to evaluate {len(self.testset)} test datapoints")
-        self.testloader = torch.utils.data.DataLoader(self.testset, batch_size=batch_size_eval, shuffle=True, num_workers=6,pin_memory=True)
+        self.testloader = torch.utils.data.DataLoader(self.testset, batch_size=batch_size_eval, shuffle=False, num_workers=6,pin_memory=True)
 
     def infer(self,data):
         device= self.config["device"]
