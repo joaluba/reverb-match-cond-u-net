@@ -51,6 +51,17 @@ class load_chosen_loss(torch.nn.Module):
             self.criterion_audio1=loss_stft.MultiResolutionSTFTLoss().to(device)
             self.criterion_audio2=loss_waveform.MultiWindowShapeLoss().to(device)
 
+        elif self.losstype=="stft+wave+vae":
+            self.criterion_audio1=loss_stft.MultiResolutionSTFTLoss().to(device)
+            self.criterion_audio2=loss_waveform.MultiWindowShapeLoss().to(device)
+            self.beta_schedule= [1] * self.config["num_epochs"]
+
+        elif self.losstype=="stft+wave+emb":
+            self.criterion_audio1=loss_stft.MultiResolutionSTFTLoss().to(device)
+            self.criterion_audio2=loss_waveform.MultiWindowShapeLoss().to(device)
+            self.criterion_emb=torch.nn.CosineSimilarity(dim=2,eps=1e-8).to(device)
+    
+
         elif self.losstype=="stft+emb":
             self.criterion_audio=loss_stft.MultiResolutionSTFTLoss().to(device)
             self.criterion_emb=torch.nn.CosineSimilarity(dim=2,eps=1e-8).to(device)
@@ -88,10 +99,21 @@ class load_chosen_loss(torch.nn.Module):
             L_names =["L_logmel","L_wave"]
         
         elif self.losstype=="stft+wave":
-            L_stft = self.criterion_audio1(sTarget.squeeze(1), sPrediction.squeeze(1))
+            L_sc, L_mag  = self.criterion_audio1(sTarget.squeeze(1), sPrediction.squeeze(1))
+            L_stft = L_sc + L_mag 
             L_wave = self.criterion_audio2(sTarget.squeeze(1), sPrediction.squeeze(1))
             L = [L_stft,L_wave]
             L_names =["L_stft","L_wave"]
+        
+        elif self.losstype=="stft+wave+emb":
+            L_sc, L_mag  = self.criterion_audio1(sTarget.squeeze(1), sPrediction.squeeze(1))
+            L_stft = L_sc + L_mag 
+            L_wave = self.criterion_audio2(sTarget.squeeze(1), sPrediction.squeeze(1))
+            # get the embedding of the prediction
+            embTarget = model_combined.conditioning_network(sTarget)
+            L_emb = (1-((torch.mean(self.criterion_emb(embStyle,embTarget))+ 1) / 2))
+            L = [L_stft,L_wave,L_emb]
+            L_names =["L_stft","L_wave","L_emb"]
 
         elif self.losstype=="wave":
             L_wave = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))
@@ -104,6 +126,14 @@ class load_chosen_loss(torch.nn.Module):
             L_vae = self.beta_schedule[epoch]*(-torch.sum(1+ log_var - mu.pow(2)- log_var.exp()))
             L = [L_stft,L_vae]
             L_names = ["L_stft","L_vae"]
+
+        elif self.losstype=="stft+wave+vae":
+            L_sc, L_mag = self.criterion_audio1(sTarget.squeeze(1), sPrediction.squeeze(1))
+            L_stft = L_sc + L_mag 
+            L_wave = self.criterion_audio2(sTarget.squeeze(1), sPrediction.squeeze(1))
+            L_vae = self.beta_schedule[epoch]*(-torch.sum(1+ log_var - mu.pow(2)- log_var.exp()))
+            L = [L_stft,L_wave,L_vae]
+            L_names = ["L_stft","L_wave","L_vae"]
 
         elif self.losstype=="logmel+vae":
             L_logmel = self.criterion_audio(sTarget.squeeze(1), sPrediction.squeeze(1))

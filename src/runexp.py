@@ -50,8 +50,8 @@ if __name__ == "__main__":
 
     np.random.seed(0)
     random.seed(0)
-    torch.manual_seed.seed(0)
-    
+    torch.manual_seed(0)
+
     # Prompt user for input with a message
     user_message = get_msg_for_exp_log("Enter info for experiment log")
 
@@ -63,7 +63,7 @@ if __name__ == "__main__":
     config = hlp.load_config("/home/ubuntu/joanna/reverb-match-cond-u-net/config/basic.yaml")
 
     # Permuting parameters
-    perm_losses = ["stft+wave", "stft"]
+    perm_losses = [ "stft+wave", "stft", "stft+wave+emb", "stft+wave+vae"]
     perm_model_types=["c_wunet"]
 
     # Conditions combinations list
@@ -97,6 +97,11 @@ if __name__ == "__main__":
             config["loss_alphas"] = [1]
         elif config["losstype"]=="stft+wave":
             config["loss_alphas"] = [0.8,0.2]
+        elif config["losstype"]=="stft+wave+emb":
+            config["loss_alphas"] = [0.6,0.2,0.2]
+        elif config["losstype"]=="stft+wave+vae":
+            config["loss_alphas"] = [0.4,0.2,0.4]
+            config["modeltype"] ="c_varwunet"
 
         # create training tags based on date and params
         date_tag = datetime.now().strftime("%d-%m-%Y--%H-%M")

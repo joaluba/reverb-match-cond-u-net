@@ -14,11 +14,11 @@ import soundfile as sf
 import random
 # my modules
 import dataset
+import baselines
 import loss_mel, loss_stft, loss_waveform
 import trainer
 import helpers as hlp
 from torch.utils.data import Subset
-
 
 class Evaluator(torch.nn.Module):
     def __init__(self,config,config_train):
@@ -26,9 +26,11 @@ class Evaluator(torch.nn.Module):
         self.config=config
         self.config_train=config_train
         self.model =trainer.load_chosen_model(config_train,config_train["modeltype"]).to(config["device"])
+        self.baseline=baselines.Baseline(config)
         self.load_measures()
         self.load_eval_dataset()
         self.failcount=0
+
     
     def load_measures(self):
         device=self.config["device"]
@@ -65,7 +67,7 @@ class Evaluator(torch.nn.Module):
             indices_chosen = range(0,N_datapoints)
         self.testset = Subset(self.testset_orig,indices_chosen)
         print(f"Preparing to evaluate {len(self.testset)} test datapoints")
-        self.testloader = torch.utils.data.DataLoader(self.testset, batch_size=batch_size_eval, shuffle=False, num_workers=6,pin_memory=True)
+        self.testloader = torch.utils.data.DataLoader(self.testset, batch_size=batch_size_eval, shuffle=True, num_workers=6,pin_memory=True)
 
     def infer(self,data):
         device= self.config["device"]
@@ -77,7 +79,6 @@ class Evaluator(torch.nn.Module):
             sTarget_prediction=self.model(sContent_in,sStyle_in)
             return sContent_in, sStyle_in, sTarget_gt, sTarget_prediction
     
-
     def compute_losses(self,checkpointpath,eval_tag):
 
         train_results=torch.load(os.path.join(checkpointpath),map_location=self.config["device"])
@@ -89,6 +90,27 @@ class Evaluator(torch.nn.Module):
             sContent, sStyle, sTarget, sPrediction=self.infer(data)
             if bool(self.config_train["is_vae"]):      
                 sPrediction, mu, log_var = sPrediction
+
+            # if evaluating baseline 
+            # sContent, sTarget, sPrediction=self.infer_baseline1(data)
+             
+            # predicion : target
+            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:target",sPrediction,sTarget))
+            # content : target 
+            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"content:target",sContent,sTarget))
+            # predicion: content
+            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:content",sPrediction,sContent))
+
+        return eval_dict_list
+    
+    def compute_losses_baseline(self,eval_tag):
+
+        eval_dict_list=[]
+        for j, data in tqdm(enumerate(self.testloader),total = len(self.testloader)):
+            # get signals
+            sContent, sStyle, sTarget, sPrediction=self.infer(data)
+            sContent, sTarget, sPrediction=self.baseline.infer_baseline(data)
+             
             # predicion : target
             eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:target",sPrediction,sTarget))
             # content : target 
@@ -217,6 +239,15 @@ def eval_condition(config,exp_subdir,checkpoint_name):
                 eval_dict_list_condition=tmp_eval.compute_losses_detection(checkpointpath,eval_tag,fixed_mic_dist=config["fixed_mic_dist"])
 
             return eval_dict_list_condition
+        
+def eval_baseline(config):
+        
+    eval_tag=config["baseline"]
+    config_train=config
+    # create evaluator object
+    tmp_eval = Evaluator(config,config_train)
+    eval_dict_list=tmp_eval.compute_losses_baseline(eval_tag)
+    return eval_dict_list
 
 
 def eval_experiment(config):
@@ -241,31 +272,50 @@ if __name__ == "__main__":
 
     config=hlp.load_config(pjoin("/home/ubuntu/joanna/reverb-match-cond-u-net/config/basic.yaml"))
 
-    # Compute for all examples
+    # # Compute for all examples
+    # config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
+    # config["evalsavedir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
+    # config["eval_file_name"] = "eval_all_batches.csv"
+    # config["rt60diffmin"] = -3
+    # config["rt60diffmax"] = 3
+    # config["N_datapoints"] = 0 # if 0 - whole test set included
+    # config["evalscript"]="basic"
+    # eval_dict=eval_condition(config,pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2"),"checkpointbest.pt")
+    # pd.DataFrame(eval_dict).to_csv(pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2")+config["eval_file_name"], index=False)
+    # print(f"Saved condition results")
+    # # eval_experiment(config)
+
+    # # Compute for re-reverberation
+    # config["eval_file_name"] = "eval_rereverb.csv"
+    # config["rt60diffmin"] = -2
+    # config["rt60diffmax"] = -0.2
+    # config["N_datapoints"] = 0 # if 0 - whole test set included
+    # eval_dict=eval_condition(config,pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2"),"checkpointbest.pt")
+    # pd.DataFrame(eval_dict).to_csv(pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2")+config["eval_file_name"], index=False)
+    # print(f"Saved condition results")
+    # # eval_experiment(config)
+
+    # # Compute for difficult de-reverberation
+    # config["eval_file_name"] = "eval_dereverb.csv"
+    # config["rt60diffmin"] = 0.2
+    # config["rt60diffmax"] = 2
+    # config["N_datapoints"] = 0 # if 0 - whole test set included
+    # eval_dict=eval_condition(config,pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2"),"checkpointbest.pt")
+    # pd.DataFrame(eval_dict).to_csv(pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2")+config["eval_file_name"], index=False)
+    # print(f"Saved condition results")
+    # # eval_experiment(config)
+
+
+    # Compute for a baseline 
     config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
-    config["evalsavedir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
-    config["eval_file_name"] = "eval_all_batches.csv"
+    config["eval_file_name"] = "eval_wpe+fins.csv"
     config["rt60diffmin"] = -3
     config["rt60diffmax"] = 3
     config["N_datapoints"] = 0 # if 0 - whole test set included
-    config["evalscript"]="basic"
-    eval_dict=eval_condition(config,pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2"),"checkpointbest.pt")
-    # eval_experiment(config)
-
-    # Compute for re-reverberation
-    config["eval_file_name"] = "eval_rereverb.csv"
-    config["rt60diffmin"] = -2
-    config["rt60diffmax"] = -0.2
-    config["N_datapoints"] = 0 # if 0 - whole test set included
-    eval_dict=eval_condition(config,pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2"),"checkpointbest.pt")
-    # eval_experiment(config)
-
-    # Compute for difficult de-reverberation
-    config["eval_file_name"] = "eval_dereverb.csv"
-    config["rt60diffmin"] = 0.2
-    config["rt60diffmax"] = 2
-    config["N_datapoints"] = 0 # if 0 - whole test set included
-    eval_dict=eval_condition(config,pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2"),"checkpointbest.pt")
+    config["baseline"]= "wpe+fins"
+    eval_dict=eval_baseline(config)
+    pd.DataFrame(eval_dict).to_csv(pjoin(config["eval_dir"])+config["eval_file_name"], index=False)
+    print(f"Saved condition results")
     # eval_experiment(config)
 
 
@@ -294,6 +344,8 @@ if __name__ == "__main__":
     # eval_dict=eval_condition(config,pjoin(config["eval_dir"], "14-05-2024--23-12_c_wunet_stft_1"),"checkpointbest.pt")
     # pd.DataFrame(eval_dict).to_csv(config["eval_dir"]+config["eval_file_name"], index=False)
     # print(f"Saved detection analysis")
+
+
 
 
 

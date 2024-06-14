@@ -137,3 +137,14 @@
 [2024-05-17-16:25:58] logmel, logmel+wave and looking for the best setting...
 [2024-05-17-16:28:27] same 
 [2024-05-20-15:01:23] same but more epochs
+[2024-06-10-09:59:55] the same as previous long experiment, appending this one into 20-05 - now testing with stft instead of logmel
+[2024-06-10-10:04:49] debug
+[2024-06-10-10:06:45] same
+[2024-06-10-11:59:23] pilot 
+[2024-06-10-12:41:49] pilot
+[2024-06-10-13:00:59] pilot debug
+[2024-06-10-13:06:27] bla
+[2024-06-10-13:12:20] pilot debug
+[2024-06-10-13:14:02] pilot
+[2024-06-10-13:19:26] pilot
+[2024-06-10-15:02:23] now full experiment 
