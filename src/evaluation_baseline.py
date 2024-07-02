@@ -90,9 +90,6 @@ class Evaluator(torch.nn.Module):
             sContent, sStyle, sTarget, sPrediction=self.infer(data)
             if bool(self.config_train["is_vae"]):      
                 sPrediction, mu, log_var = sPrediction
-
-            # if evaluating baseline 
-            # sContent, sTarget, sPrediction=self.infer_baseline1(data)
              
             # predicion : target
             eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:target",sPrediction,sTarget))
@@ -108,8 +105,7 @@ class Evaluator(torch.nn.Module):
         eval_dict_list=[]
         for j, data in tqdm(enumerate(self.testloader),total = len(self.testloader)):
             # get signals
-            sContent, sStyle, sTarget, sPrediction=self.infer(data)
-            sContent, sTarget, sPrediction=self.baseline.infer_baseline(data)
+            sContent, sStyle, sTarget, sPrediction=self.baseline.infer_baseline(data)
              
             # predicion : target
             eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:target",sPrediction,sTarget))
@@ -272,75 +268,17 @@ if __name__ == "__main__":
 
     config=hlp.load_config(pjoin("/home/ubuntu/joanna/reverb-match-cond-u-net/config/basic.yaml"))
 
-    # Compute for all examples
+    # Compute for a baseline 
     config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
-    config["evalsavedir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
-    config["eval_file_name"] = "eval_all_batches.csv"
+    config["eval_file_name"] = "eval_wpe+fins.csv"
     config["rt60diffmin"] = -3
     config["rt60diffmax"] = 3
     config["N_datapoints"] = 0 # if 0 - whole test set included
-    config["evalscript"]="basic"
-    eval_experiment(config)
+    config["baseline"]= "wpe+fins"
+    eval_dict=eval_baseline(config)
+    pd.DataFrame(eval_dict).to_csv(pjoin(config["eval_dir"])+config["eval_file_name"], index=False)
+    print(f"Saved condition results")
 
-    # Compute for re-reverberation
-    config["eval_file_name"] = "eval_rereverb.csv"
-    config["rt60diffmin"] = -2
-    config["rt60diffmax"] = -0.2
-    config["N_datapoints"] = 0 # if 0 - whole test set included
-    eval_experiment(config)
-
-    # Compute for difficult de-reverberation
-    config["eval_file_name"] = "eval_dereverb.csv"
-    config["rt60diffmin"] = 0.2
-    config["rt60diffmax"] = 2
-    config["N_datapoints"] = 0 # if 0 - whole test set included
-    eval_experiment(config)
-
-    # # Compute for all examples
-    # config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
-    # config["evalsavedir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
-    # config["eval_file_name"] = "eval_all_batches.csv"
-    # config["rt60diffmin"] = -3
-    # config["rt60diffmax"] = 3
-    # config["N_datapoints"] = 0 # if 0 - whole test set included
-    # config["evalscript"]="basic"
-    # eval_dict=eval_condition(config,pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2"),"checkpointbest.pt")
-    # pd.DataFrame(eval_dict).to_csv(pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2")+config["eval_file_name"], index=False)
-    # print(f"Saved condition results")
-    # # eval_experiment(config)
-
-    # # Compute for re-reverberation
-    # config["eval_file_name"] = "eval_rereverb.csv"
-    # config["rt60diffmin"] = -2
-    # config["rt60diffmax"] = -0.2
-    # config["N_datapoints"] = 0 # if 0 - whole test set included
-    # eval_dict=eval_condition(config,pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2"),"checkpointbest.pt")
-    # pd.DataFrame(eval_dict).to_csv(pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2")+config["eval_file_name"], index=False)
-    # print(f"Saved condition results")
-    # # eval_experiment(config)
-
-    # # Compute for difficult de-reverberation
-    # config["eval_file_name"] = "eval_dereverb.csv"
-    # config["rt60diffmin"] = 0.2
-    # config["rt60diffmax"] = 2
-    # config["N_datapoints"] = 0 # if 0 - whole test set included
-    # eval_dict=eval_condition(config,pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2"),"checkpointbest.pt")
-    # pd.DataFrame(eval_dict).to_csv(pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2")+config["eval_file_name"], index=False)
-    # print(f"Saved condition results")
-    # # eval_experiment(config)
-
-
-    # # Compute for a baseline 
-    # config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
-    # config["eval_file_name"] = "eval_wpe+fins.csv"
-    # config["rt60diffmin"] = -3
-    # config["rt60diffmax"] = 3
-    # config["N_datapoints"] = 0 # if 0 - whole test set included
-    # config["baseline"]= "wpe+fins"
-    # eval_dict=eval_baseline(config)
-    # pd.DataFrame(eval_dict).to_csv(pjoin(config["eval_dir"])+config["eval_file_name"], index=False)
-    # print(f"Saved condition results")
-    # # eval_experiment(config)
 
 
     # # Compute for all examples

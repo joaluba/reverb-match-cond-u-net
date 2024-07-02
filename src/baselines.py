@@ -14,6 +14,7 @@ import helpers as hlp
 import torch
 import numpy as np
 import scipy 
+from torchaudio.functional import fftconvolve
 
 class Baseline(torch.nn.Module):
     def __init__(self,config):
@@ -27,38 +28,51 @@ class Baseline(torch.nn.Module):
             fins_config_path = pjoin(fins_project_path,"config.yaml")
             self.fins_config = hlp.load_config_fins(fins_config_path)
             # load fins model
-            self.fins_model = model_fins.FilteredNoiseShaper(self.fins_config.model.params)
-            state_dicts = torch.load(pjoin(fins_checkpoints_path,"epoch-122.pt"), map_location="cuda")
+            self.fins_model = model_fins.FilteredNoiseShaper(self.fins_config.model.params).to(self.config["device"])
+            state_dicts = torch.load(pjoin(fins_checkpoints_path,"epoch-122.pt"), map_location=self.config["device"])
             self.fins_model.load_state_dict(state_dicts["model_state_dict"])
+            self.fins_model.eval()
 
     def infer_baseline(self,data):
 
         device= self.config["device"]
         # Function to infer target audio
         with torch.no_grad():
-            sContent_in = data[0].to(device)
-            sStyle_in=data[1].to(device)
-            sTarget_gt=data[2].to(device)
-            # step 1: dereverberate content sound
+            sContent_in = data[0].to(device) # (batch_size, num_channels, signal_length)
+            sStyle_in=data[1].to(device) # (batch_size, num_channels, signal_length)
+            sTarget_gt=data[2].to(device) # (batch_size, num_channels, signal_length)
+            sAnecho=data[3].to(device) # (batch_size, num_channels, signal_length)
+            # ----- step 1: dereverberate content sound -----
             sContent_in_np = sContent_in.cpu().numpy()
             # Using a list comprehension to apply fit_nara to each slice and collect the results
-            results = [fit_nara(sContent_in_np[i,:,:].T) for i in range(sContent_in_np.shape[0])]
+            results = [fit_nara_online(sContent_in_np[i,:,:].T) for i in range(sContent_in_np.shape[0])] 
             # Extracting the first element of each tuple returned by fit_nara
             sContent_derev = np.array([result[0] for result in results])
             # Transpose back to match the original shape before processing
-            sContent_derev = sContent_derev.transpose(0, 2, 1)
-            # step 2: estimate RIR of the style
+            sContent_derev = torch.tensor(sContent_derev,dtype=torch.float32).unsqueeze(1).to(device) # (batch_size, num_channels, signal_length)
+            sContent_derev=hlp.torch_normalize_max_abs(sContent_derev)
+            # ----- step 2: estimate RIR of the style -----
             # Noise for late part
             rir_length = int(self.fins_config.model.params.rir_duration * self.fins_config.model.params.sr)
-            stochastic_noise = torch.randn((1, 1, rir_length), device="cuda")
-            batch_stochastic_noise = stochastic_noise.repeat(1, self.fins_config.model.params.num_filters, 1)
+
             # Noise for decoder conditioning
-            batch_noise_condition = torch.randn((1, self.fins_config.model.params.noise_condition_length), device="cuda")
-            reverberated_source=sStyle_in.unsqueeze(0)
-            reverberated_source = audio_fins.audio_normalize_batch(reverberated_source, "rms", self.fins_config.model.params.rms_level)
-            predicted_rir = self.fins_model(reverberated_source, batch_stochastic_noise, batch_noise_condition).cpu().numpy()
-            # step 3: convolve derev.signal with the prediction
-            sTarget_prediction = torch.from_numpy(scipy.signal.fftconvolve(sContent_derev, predicted_rir,mode="full"))[:,:self.sig_len].to(device)
+            batch_size=sContent_in.shape[0]
+            batch_stochastic_noise = torch.randn((batch_size, self.fins_config.model.params.num_filters, rir_length), device="cuda")
+            batch_noise_condition = torch.randn((batch_size, self.fins_config.model.params.noise_condition_length), device="cuda")
+            reverberated_source = audio_fins.audio_normalize_batch(sStyle_in, "rms", self.fins_config.model.params.rms_level) # (batch_size, num_channels, signal_length)
+            predicted_rir = self.fins_model(reverberated_source, batch_stochastic_noise, batch_noise_condition) # (batch_size, num_channels, ir_length)
+    
+            # ----- step 3: convolve derev.signal with the predicted rir in each batch  ---- 
+            # sTarget_prediction = torch.stack([fftconvolve(sContent_derev[i].unsqueeze(0), predicted_rir[i].unsqueeze(0), mode="full").squeeze(0) for i in range(batch_size)])
+            sTarget_prediction = torch.stack([fftconvolve(sAnecho[i].unsqueeze(0), predicted_rir[i].unsqueeze(0), mode="full").squeeze(0) for i in range(batch_size)])
+
+            # cut to the length of original signal
+            sTarget_prediction=sTarget_prediction[:,:,:sTarget_gt.shape[2]]
+            # normalize predicted output
+            sTarget_prediction=hlp.torch_normalize_max_abs(sTarget_prediction)
+            # synchronize predicted output with anechoic signal for each batch
+            sTarget_prediction= torch.stack([hlp.synch_sig2(sAnecho[i,:,:].cpu(),sTarget_prediction[i,:,:].cpu())[1] for i in range(batch_size)]).to(device)
+            
             return sContent_in, sStyle_in, sTarget_gt, sTarget_prediction
     
 def fit_nara_online(y):
