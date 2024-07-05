@@ -94,7 +94,7 @@ class DatasetReverbTransfer(Dataset):
         # s2r1=hlp.torch_standardize_max_abs(s2r1) # "Flipped" target
         s1=hlp.torch_normalize_max_abs(s1) # Anechoic content sound
 
-        return s1r1n1, s2r2n2, s1r2, s1
+        return s1r1n1, s2r2n2, s1r2, s1, s2
     
     def get_idx_with_rt60diff(self,diff_rt60_min,diff_rt60_max):
         # create column diff_rt60 to compute difference in rt60 between content and style audio

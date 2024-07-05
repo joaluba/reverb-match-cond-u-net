@@ -67,8 +67,14 @@ class Trainer(torch.nn.Module):
         else:
             checkpoint_path=pjoin(savedir,resume_checkpoint)
             train_results=torch.load(checkpoint_path,map_location=device)
-            self.model.load_state_dict(train_results["model_state_dict"])           
-            self.optimizer.load_state_dict(train_results["optimizer_state_dict"])
+            self.model.load_state_dict(train_results["model_state_dict"])
+            # ---- OPTIMIZERS: ----
+            if trainscheme=="joint":
+                self.optimizer.load_state_dict(train_results["optimizer_state_dict"])
+            elif trainscheme=="separate":
+                self.optimizer_AE.load_state_dict(train_results["optimizer_AE_state_dict"])
+                self.optimizer_CN.load_state_dict(train_results["optimizer_CN_state_dict"])       
+
             self.writer=SummaryWriter(resume_tboard)
             self.loss_evol = train_results['loss']
             self.start_epoch = train_results['epoch']

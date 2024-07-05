@@ -8,6 +8,7 @@ from os.path import join as pjoin
 from torch.utils.tensorboard import SummaryWriter
 import speechmetrics
 from torchmetrics.audio import ScaleInvariantSignalDistortionRatio, SpeechReverberationModulationEnergyRatio, PerceptualEvaluationSpeechQuality, ShortTimeObjectiveIntelligibility
+from torchaudio.pipelines import SQUIM_OBJECTIVE, SQUIM_SUBJECTIVE
 import numpy as np
 import pandas as pd
 import soundfile as sf
@@ -19,6 +20,7 @@ import loss_mel, loss_stft, loss_waveform
 import trainer
 import helpers as hlp
 from torch.utils.data import Subset
+from torchaudio import save as audiosave
 
 class Evaluator(torch.nn.Module):
     def __init__(self,config,config_train):
@@ -47,7 +49,9 @@ class Evaluator(torch.nn.Module):
             "srmr" : SpeechReverberationModulationEnergyRatio(16000).to(device),
             "pesq" : PerceptualEvaluationSpeechQuality(16000, 'wb').to(device),
             "stoi" : ShortTimeObjectiveIntelligibility(16000).to(device),
-            "emb_cos": torch.nn.CosineSimilarity(dim=2,eps=1e-8).to(device)
+            "emb_cos": torch.nn.CosineSimilarity(dim=2,eps=1e-8).to(device),
+            "squim_obj" : SQUIM_OBJECTIVE.get_model().to(device),
+            "squim_subj" : SQUIM_SUBJECTIVE.get_model().to(device)
         }
 
     def load_eval_dataset(self):
@@ -67,7 +71,7 @@ class Evaluator(torch.nn.Module):
             indices_chosen = range(0,N_datapoints)
         self.testset = Subset(self.testset_orig,indices_chosen)
         print(f"Preparing to evaluate {len(self.testset)} test datapoints")
-        self.testloader = torch.utils.data.DataLoader(self.testset, batch_size=batch_size_eval, shuffle=True, num_workers=6,pin_memory=True)
+        self.testloader = torch.utils.data.DataLoader(self.testset, batch_size=batch_size_eval, shuffle=False, num_workers=6,pin_memory=True)
 
     def infer(self,data):
         device= self.config["device"]
@@ -80,6 +84,10 @@ class Evaluator(torch.nn.Module):
             return sContent_in, sStyle_in, sTarget_gt, sTarget_prediction
     
     def compute_losses(self,checkpointpath,eval_tag):
+                
+        np.random.seed(0)
+        random.seed(0)
+        torch.manual_seed(0)
 
         train_results=torch.load(os.path.join(checkpointpath),map_location=self.config["device"])
         self.model.load_state_dict(train_results["model_state_dict"])
@@ -91,32 +99,41 @@ class Evaluator(torch.nn.Module):
             if bool(self.config_train["is_vae"]):      
                 sPrediction, mu, log_var = sPrediction
 
-            # if evaluating baseline 
-            # sContent, sTarget, sPrediction=self.infer_baseline1(data)
+            sStyle_anecho=data[4]
+            sAnecho=data[3]
+
+            if j<30:
+                save_batch_audios(sContent,sStyle,sTarget,sPrediction,sAnecho,eval_tag,j,self.config["savedir_sounds"])
              
             # predicion : target
-            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:target",sPrediction,sTarget))
+            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:target",sPrediction,sTarget,nmref=sStyle_anecho))
             # content : target 
-            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"content:target",sContent,sTarget))
+            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"content:target",sContent,sTarget,nmref=sStyle_anecho))
             # predicion: content
-            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:content",sPrediction,sContent))
+            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:content",sPrediction,sContent,nmref=sStyle_anecho))
 
         return eval_dict_list
     
     def compute_losses_baseline(self,eval_tag):
+        
+        np.random.seed(0)
+        random.seed(0)
+        torch.manual_seed(0)
 
         eval_dict_list=[]
         for j, data in tqdm(enumerate(self.testloader),total = len(self.testloader)):
             # get signals
-            sContent, sStyle, sTarget, sPrediction=self.infer(data)
-            sContent, sTarget, sPrediction=self.baseline.infer_baseline(data)
-             
+            sContent, sStyle, sTarget, sPrediction=self.baseline.infer_baseline(data)
+            sAnecho=data[3]
+            sStyle_anecho=data[4]
+            if j<30:
+                save_batch_audios(sContent,sStyle,sTarget,sPrediction,sAnecho,eval_tag,j,self.config["savedir_sounds"])
             # predicion : target
-            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:target",sPrediction,sTarget))
+            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:target",sPrediction,sTarget,nmref=sStyle_anecho))
             # content : target 
-            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"content:target",sContent,sTarget))
+            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"content:target",sContent,sTarget,nmref=sStyle_anecho))
             # predicion: content
-            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:content",sPrediction,sContent))
+            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:content",sPrediction,sContent,nmref=sStyle_anecho))
 
         return eval_dict_list
     
@@ -158,7 +175,7 @@ class Evaluator(torch.nn.Module):
 
         return eval_dict_list
         
-    def compute_losses_batch(self, idx, label, comp_name, x1, x2):
+    def compute_losses_batch(self, idx, label, comp_name, x1, x2,nmref=None):
 
         device= self.config["device"]
 
@@ -166,14 +183,17 @@ class Evaluator(torch.nn.Module):
             x1=x1.unsqueeze(0)
         if len(x2.shape)<3:
             x2=x2.unsqueeze(0)
+            
         x1_emb=self.model.conditioning_network(x1)
         x2_emb=self.model.conditioning_network(x2)
 
         x1=x1.squeeze(1)
         x2=x2.squeeze(1)
+        nmref=nmref.squeeze(1)
         # Resample - losses operate on 16kHz sampling rate
         x1=hlp.torch_resample_if_needed(x1,48000,16000).to(device)
         x2=hlp.torch_resample_if_needed(x2,48000,16000).to(device)
+        nmref=hlp.torch_resample_if_needed(nmref,48000,16000).to(device)
 
         # ----- Compute perceptual losses -----
         L_pesq=torch.tensor([float('nan')])
@@ -190,6 +210,23 @@ class Evaluator(torch.nn.Module):
             self.failcount+=1
             print("Could not compute stoi for this signal for " + str(self.failcount) + "times")
 
+        # ----- Compute non-intrusive metrics -----
+
+        try:
+            L_pesq_x1, L_stoi_x1, L_sisdr_x1=self.measures["squim_obj"](x1)
+            L_pesq_x2, L_stoi_x2, L_sisdr_x2=self.measures["squim_obj"](x2)
+        except:
+            print("Could not compute squim objective predictions")
+
+        try:
+            L_mos_x1=self.measures["squim_subj"](x1,nmref) 
+            L_mos_x2=self.measures["squim_subj"](x2,nmref) 
+        except:
+            print("Could not compute squim subjective predictions")
+
+        L_srmr_x1=self.measures["srmr"](x1)
+        L_srmr_x2=self.measures["srmr"](x2)
+
         # ----- Create a dictionary with loss values -----
         dict_row={ 
         'label': label,
@@ -204,10 +241,13 @@ class Evaluator(torch.nn.Module):
         'L_logmel': self.measures["logmel"](x1,x2).item(),
         'L_wave': self.measures["wave"](x1,x2).item(),
         'L_sisdr': self.measures["sisdr"](x1,x2).item(),
-        'L_srmr_1': self.measures["srmr"](x1).item(),
-        'L_srmr_2': self.measures["srmr"](x2).item(),
+        'L_srmr_nidiff': torch.mean(torch.abs(L_srmr_x1-L_srmr_x2)).item(),
         'L_pesq': L_pesq.item(), 
         'L_stoi': L_stoi.item(),  
+        'L_mos_nidiff': torch.mean(torch.abs(L_mos_x1-L_mos_x2)).item(),
+        'L_pesq_nidiff': torch.mean(torch.abs(L_pesq_x1-L_pesq_x2)).item(),
+        'L_stoi_nidiff': torch.mean(torch.abs(L_stoi_x1-L_stoi_x2)).item(), 
+        'L_sisdr_nidiff': torch.mean(torch.abs(L_sisdr_x1-L_sisdr_x2)).item(),  
         'L_emb_cos': (1-((torch.mean(self.measures["emb_cos"](x1_emb,x2_emb))+ 1) / 2)).item(), 
         'L_emb_euc': torch.dist(x1_emb,x2_emb).item()
         }
@@ -249,6 +289,14 @@ def eval_baseline(config):
     eval_dict_list=tmp_eval.compute_losses_baseline(eval_tag)
     return eval_dict_list
 
+def save_batch_audios(sContent,sStyle,sTarget,sPrediction,sAnecho,eval_tag,batch_nr,dirsounds):
+    batch_size=sContent.shape[0]
+    [audiosave(pjoin(dirsounds,eval_tag + "_b"+ str(batch_nr)+ "_i"+ str(i) +'_content.wav'), sContent[i,:,:].cpu(), 48000) for i in range(batch_size)]
+    [audiosave(pjoin(dirsounds,eval_tag + "_b"+ str(batch_nr)+ "_i"+ str(i) +'_style.wav'), sStyle[i,:,:].cpu(), 48000) for i in range(batch_size)]
+    [audiosave(pjoin(dirsounds,eval_tag + "_b"+ str(batch_nr)+ "_i"+ str(i) +'_target.wav'), sTarget[i,:,:].cpu(), 48000) for i in range(batch_size)]
+    [audiosave(pjoin(dirsounds,eval_tag + "_b"+ str(batch_nr)+ "_i"+ str(i) +'_prediction.wav'), sPrediction[i,:,:].cpu(), 48000) for i in range(batch_size)]
+    [audiosave(pjoin(dirsounds,eval_tag + "_b"+ str(batch_nr)+ "_i"+ str(i) +'_anecho.wav'), sAnecho[i,:,:].cpu(), 48000) for i in range(batch_size)]
+
 
 def eval_experiment(config):
 
@@ -268,32 +316,35 @@ def eval_experiment(config):
             print(f"Saved final results")
 
 
+
 if __name__ == "__main__":
 
     config=hlp.load_config(pjoin("/home/ubuntu/joanna/reverb-match-cond-u-net/config/basic.yaml"))
 
-    # Compute for all examples
     config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
     config["evalsavedir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
-    config["eval_file_name"] = "eval_all_batches.csv"
-    config["rt60diffmin"] = -3
-    config["rt60diffmax"] = 3
     config["N_datapoints"] = 0 # if 0 - whole test set included
     config["evalscript"]="basic"
-    eval_experiment(config)
 
     # Compute for re-reverberation
-    config["eval_file_name"] = "eval_rereverb.csv"
+    config["savedir_sounds"]="/home/ubuntu/joanna/reverb-match-cond-u-net/sounds/dereverb/"
+    config["eval_file_name"] = "mymodels_eval_dereverb.csv"
     config["rt60diffmin"] = -2
     config["rt60diffmax"] = -0.2
-    config["N_datapoints"] = 0 # if 0 - whole test set included
     eval_experiment(config)
 
     # Compute for difficult de-reverberation
-    config["eval_file_name"] = "eval_dereverb.csv"
+    config["savedir_sounds"]="/home/ubuntu/joanna/reverb-match-cond-u-net/sounds/rereverb/"
+    config["eval_file_name"] = "mymodels_eval_rereverb.csv"
     config["rt60diffmin"] = 0.2
     config["rt60diffmax"] = 2
-    config["N_datapoints"] = 0 # if 0 - whole test set included
+    eval_experiment(config)
+
+    # Compute for all examples
+    config["savedir_sounds"]="/home/ubuntu/joanna/reverb-match-cond-u-net/sounds/all_batches/"
+    config["eval_file_name"] = "mymodels_eval_all_batches.csv"
+    config["rt60diffmin"] = -3
+    config["rt60diffmax"] = 3
     eval_experiment(config)
 
     # # Compute for all examples
