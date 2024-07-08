@@ -65,7 +65,6 @@ class DatasetReverbTransfer(Dataset):
         else: 
             r2 = hlp.torch_load_mono(self.style_ir,self.fs)
 
-
         # Convolve signals with impulse responses
         s1r1 = torch.from_numpy(scipy.signal.fftconvolve(s1, r1,mode="full"))[:,:self.sig_len]
         s2r2 = torch.from_numpy(scipy.signal.fftconvolve(s2, r2,mode="full"))[:,:self.sig_len]
@@ -180,14 +179,12 @@ class DatasetReverbTransfer(Dataset):
             r2=hlp.truncate_ir_silence(r2, self.fs, threshold_db=20)
 
 
-
         # separate rirs into early and late 
         cutpoint_ms=50
         r2_early, r2_late = hlp.rir_split_earlylate(r2,self.fs,cutpoint_ms)
         r1_early, r1_late = hlp.rir_split_earlylate(r1,self.fs,cutpoint_ms)
         if gen_rir_b:
             r1b_early, r1b_late = hlp.rir_split_earlylate(r1b,self.fs,cutpoint_ms)
-
 
         # content a
         s1r1_early = torch.from_numpy(scipy.signal.fftconvolve(s1, r1_early,mode="full"))[:,:self.sig_len]

@@ -52,4 +52,3 @@ N_datapoints: 1000
 train_results_file: /home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/18-01-2024--00-56_many-to-many_stft/checkpoint_best.pt
 eval_tag: 18-01-2024--00-56_many-to-many_stft
 evalsavedir: /home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-15-01-2024/
-baseline: null

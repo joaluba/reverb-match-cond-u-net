@@ -19,7 +19,7 @@ import scipy
 from torchaudio.functional import fftconvolve
 from torchaudio import save as audiosave
 
-class Baseline(torch.nn.Module):
+class Baselines(torch.nn.Module):
     def __init__(self,config):
         super().__init__()
         self.config=config
@@ -34,14 +34,13 @@ class Baseline(torch.nn.Module):
         state_dicts = torch.load(pjoin(fins_checkpoints_path,"epoch-122.pt"), map_location=self.config["device"])
         self.fins_model.load_state_dict(state_dicts["model_state_dict"])
         self.fins_model.eval()
-        if self.config["baseline"]=="dfnet+fins":
-            # load dfnet
-            self.modeldf, self.df_state, _ = init_df()  # Load default model
+        # load dfnet
+        self.modeldf, self.df_state, _ = init_df()  # Load default model
 
-    def infer_baseline(self,data):
+    def infer_baseline(self,data,baseline):
 
         device= self.config["device"]
-        baseline=self.config["baseline"]
+
         # Function to infer target audio
         with torch.no_grad():
             sContent_in = data[0].to(device) # (batch_size, num_channels, signal_length)

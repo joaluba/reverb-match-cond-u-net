@@ -23,21 +23,18 @@ from torch.utils.data import Subset
 from torchaudio import save as audiosave
 
 class Evaluator(torch.nn.Module):
-    def __init__(self,config,config_train):
+    def __init__(self,config):
         super().__init__()
         self.config=config
-        self.config_train=config_train
-        self.model =trainer.load_chosen_model(config_train,config_train["modeltype"]).to(config["device"])
-        self.baseline=baselines.Baseline(config)
-        self.load_measures()
+        self.baselines=baselines.Baselines(config)
+        self.load_metrics()
         self.load_eval_dataset()
         self.failcount=0
 
-    
-    def load_measures(self):
+    def load_metrics(self):
         device=self.config["device"]
 
-        self.measures= {
+        self.metrics= {
             "multi-stft" : loss_stft.MultiResolutionSTFTLoss().to(device), 
             "multi-mel"  : loss_mel.MultiMelSpectrogramLoss().to(device),
             "multi-wave" : loss_waveform.MultiWindowShapeLoss().to(device),
@@ -62,9 +59,9 @@ class Evaluator(torch.nn.Module):
         batch_size_eval = self.config["batch_size_eval"]
 
         # load a test split from the dataset used for training
-        self.config_train["split"] = "test" 
-        self.config_train["p_noise"] = 0 # for evaluation, we do not want noise 
-        self.testset_orig = dataset.DatasetReverbTransfer(self.config_train)
+        self.config["split"] = "test" 
+        self.config["p_noise"] = 0 # for evaluation, we do not want noise 
+        self.testset_orig = dataset.DatasetReverbTransfer(self.config)
         # choose a subset of the original test split
         indices_chosen = self.testset_orig.get_idx_with_rt60diff(rt60diffmin,rt60diffmax)
         if N_datapoints>0:
@@ -72,49 +69,60 @@ class Evaluator(torch.nn.Module):
         self.testset = Subset(self.testset_orig,indices_chosen)
         print(f"Preparing to evaluate {len(self.testset)} test datapoints")
         self.testloader = torch.utils.data.DataLoader(self.testset, batch_size=batch_size_eval, shuffle=False, num_workers=6,pin_memory=True)
-
-    def infer(self,data):
-        device= self.config["device"]
-        # Function to infer target audio
-        with torch.no_grad():
-            sContent_in = data[0].to(device)
-            sStyle_in=data[1].to(device)
-            sTarget_gt=data[2].to(device)
-            sTarget_prediction=self.model(sContent_in,sStyle_in)
-            return sContent_in, sStyle_in, sTarget_gt, sTarget_prediction
-    
-    def compute_losses(self,checkpointpath,eval_tag):
+   
+    def compute_metrics_oracle(self):
                 
         np.random.seed(0)
         random.seed(0)
         torch.manual_seed(0)
 
-        train_results=torch.load(os.path.join(checkpointpath),map_location=self.config["device"])
-        self.model.load_state_dict(train_results["model_state_dict"])
-
         eval_dict_list=[]
         for j, data in tqdm(enumerate(self.testloader),total = len(self.testloader)):
-            # get signals
-            sContent, sStyle, sTarget, sPrediction=self.infer(data)
-            if bool(self.config_train["is_vae"]):      
-                sPrediction, mu, log_var = sPrediction
-
-            sStyle_anecho=data[4]
-            sAnecho=data[3]
-
-            if j<30:
-                save_batch_audios(sContent,sStyle,sTarget,sPrediction,sAnecho,eval_tag,j,self.config["savedir_sounds"])
-             
-            # predicion : target
-            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:target",sPrediction,sTarget,nmref=sStyle_anecho))
-            # content : target 
-            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"content:target",sContent,sTarget,nmref=sStyle_anecho))
-            # predicion: content
-            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:content",sPrediction,sContent,nmref=sStyle_anecho))
+            # get datapoint 
+            sContent, sStyle, sTarget, sAnecho, sStyle_anecho = data
+            # get metrics
+            # -> content : target 
+            eval_dict_list.append(self.audiometrics4batch(j,"oracle","content:target",sContent,sTarget,nmref=sStyle_anecho))
+            # -> content : anechoic
+            eval_dict_list.append(self.metrics4batch(j,"oracle","content:anecho",sContent,sAnecho,nmref=sStyle_anecho))
+            # -> content : style
+            eval_dict_list.append(self.metrics4batch(j,"oracle","content:style",sContent,sStyle,nmref=sStyle_anecho))
 
         return eval_dict_list
     
-    def compute_losses_baseline(self,eval_tag):
+    def compute_metrics_checkpoint(self,checkpointpath,eval_tag):
+                
+        np.random.seed(0)
+        random.seed(0)
+        torch.manual_seed(0)
+
+        # load training configuration
+        config_train=hlp.load_config(pjoin(os.path.dirname(checkpointpath),"train_config.yaml"))
+        # load model architecture
+        model=trainer.load_chosen_model(config_train,config_train["modeltype"]).to(config["device"])
+        # load weights from checkpoint
+        train_results=torch.load(os.path.join(checkpointpath),map_location=self.config["device"])
+        model.load_state_dict(train_results["model_state_dict"])
+
+        eval_dict_list=[]
+        for j, data in tqdm(enumerate(self.testloader),total = len(self.testloader)):
+            # get datapoint 
+            sContent, sStyle, sTarget, sAnecho, sStyle_anecho = data
+            # get prediction
+            _, _, _, sPrediction=self.infer(data)
+            if bool(self.config_train["is_vae"]):      
+                sPrediction, mu, log_var = sPrediction
+            # get metrics
+            # -> predicion : target
+            eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:target",sPrediction,sTarget,nmref=sStyle_anecho))
+            # -> predicion : content
+            eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:content",sPrediction,sContent,nmref=sStyle_anecho))
+            # -> predicion : style
+            eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:style",sPrediction,sStyle,nmref=sStyle_anecho))
+
+        return eval_dict_list
+    
+    def compute_metrics_baseline(self,baseline):
         
         np.random.seed(0)
         random.seed(0)
@@ -122,60 +130,57 @@ class Evaluator(torch.nn.Module):
 
         eval_dict_list=[]
         for j, data in tqdm(enumerate(self.testloader),total = len(self.testloader)):
-            # get signals
-            sContent, sStyle, sTarget, sPrediction=self.baseline.infer_baseline(data)
-            sAnecho=data[3]
-            sStyle_anecho=data[4]
-            if j<30:
-                save_batch_audios(sContent,sStyle,sTarget,sPrediction,sAnecho,eval_tag,j,self.config["savedir_sounds"])
-            # predicion : target
-            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:target",sPrediction,sTarget,nmref=sStyle_anecho))
-            # content : target 
-            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"content:target",sContent,sTarget,nmref=sStyle_anecho))
-            # predicion: content
-            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:content",sPrediction,sContent,nmref=sStyle_anecho))
+            # get datapoint 
+            sContent, sStyle, sTarget, sAnecho, sStyle_anecho = data
+            # get prediction
+            _, _, _, sPrediction=self.baseline.infer_baseline(data,baseline)
+            # get metrics
+            # -> predicion : target
+            eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:target",sPrediction,sTarget,nmref=sStyle_anecho))
+            # -> predicion : content
+            eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:content",sPrediction,sContent,nmref=sStyle_anecho))
+            # -> predicion : style
+            eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:style",sPrediction,sStyle,nmref=sStyle_anecho))
 
         return eval_dict_list
     
             
-    def compute_losses_detection(self,checkpointpath,eval_tag,fixed_mic_dist=None):
+    # def compute_losses_checkpoint_rocs(self,checkpointpath,eval_tag):
 
-        evalsavedir=self.config["evalsavedir"]
-        N_datapoints=self.config["N_datapoints"]
-        device=self.config["device"]
-        train_results=torch.load(os.path.join(checkpointpath),map_location=device)
-        self.model.load_state_dict(train_results["model_state_dict"])
+    #     np.random.seed(0)
+    #     random.seed(0)
+    #     torch.manual_seed(0)
 
-        eval_dict_list=[]
-        for j in range(0,N_datapoints):
-            # get signals: 
-            print(j)
-            signals, rirs =self.testset_orig.get_item_test(j, gen_rir_b=True, fixed_mic_dist=fixed_mic_dist)
-            with torch.no_grad():
-                sPrediction=self.model(signals["s1r1"].unsqueeze(0),signals["s1r2"].unsqueeze(0))
-                if bool(self.config_train["is_vae"]):      
-                    sPrediction, mu, log_var = sPrediction
-            # same source, RIRs from two different rooms
-            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"room1:room2",signals["s1r1"],signals["s1r2"]))
-            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"room1:room2 (early)",signals["s1r1_early"],signals["s1r2_early"]))
-            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"room1:room2 (late)",signals["s1r1_late"],signals["s1r2_late"]))
-            # same source, RIRs from the same room but different position 
-            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"room1a:room1b",signals["s1r1"],signals["s1r1b"]))
-            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"room1a:room1b (early)",signals["s1r1_early"],signals["s1r1b_early"]))
-            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"room1a:room1b (late)",signals["s1r1_late"],signals["s1r1b_late"]))
-            # predicion : target
-            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:target",sPrediction,signals["s1r2"]))
-            # predicion: content
-            eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:content",sPrediction,signals["s1r1"]))
+    #     train_results=torch.load(os.path.join(checkpointpath),map_location=self.config["device"])
+    #     self.model.load_state_dict(train_results["model_state_dict"])
+    #     N_datapoints=self.config["N_datapoints"]
 
-            if j<10:
-                if not os.path.exists(pjoin(evalsavedir,'eval_extras')):
-                    os.mkdir(pjoin(evalsavedir,'eval_extras'))
-                torch.save(rirs, pjoin(evalsavedir,'eval_extras',"rirs_testsample"+ str(j)+ ".pt"))
 
-        return eval_dict_list
+    #     eval_dict_list=[]
+    #     for j in range(0,N_datapoints):
+    #         # get signals: 
+    #         print(j)
+    #         signals, rirs =self.testset_orig.get_item_test(j, gen_rir_b=True, fixed_mic_dist=fixed_mic_dist)
+
+    #             sPrediction=self.model(signals["s1r1"].unsqueeze(0),signals["s1r2"].unsqueeze(0))
+    #             if bool(self.config_train["is_vae"]):      
+    #                 sPrediction, mu, log_var = sPrediction
+    #         # same source, RIRs from two different rooms
+    #         eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"room1:room2",signals["s1r1"],signals["s1r2"]))
+    #         eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"room1:room2 (early)",signals["s1r1_early"],signals["s1r2_early"]))
+    #         eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"room1:room2 (late)",signals["s1r1_late"],signals["s1r2_late"]))
+    #         # same source, RIRs from the same room but different position 
+    #         eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"room1a:room1b",signals["s1r1"],signals["s1r1b"]))
+    #         eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"room1a:room1b (early)",signals["s1r1_early"],signals["s1r1b_early"]))
+    #         eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"room1a:room1b (late)",signals["s1r1_late"],signals["s1r1b_late"]))
+    #         # predicion : target
+    #         eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:target",sPrediction,signals["s1r2"]))
+    #         # predicion: content
+    #         eval_dict_list.append(self.compute_losses_batch(j,eval_tag,"prediction:content",sPrediction,signals["s1r1"]))
+
+    #     return eval_dict_list
         
-    def compute_losses_batch(self, idx, label, comp_name, x1, x2,nmref=None):
+    def metrics4batch(self, idx, label, comp_name, x1, x2,nmref=None):
 
         device= self.config["device"]
 
@@ -254,67 +259,60 @@ class Evaluator(torch.nn.Module):
         
         return dict_row
         
-    
-def eval_condition(config,exp_subdir,checkpoint_name):
-        
-    eval_tag=pjoin(exp_subdir).split('/')[-1]
 
-    # load results from checkpoints in the directory
-    for filename in os.listdir(exp_subdir):
-        if filename==checkpoint_name: 
-
-            # specify training params file
-            config_train=hlp.load_config(pjoin(exp_subdir,"train_config.yaml"))
-
-            # create evaluator object
-            tmp_eval = Evaluator(config,config_train)
-        
-            # checkpoint file path
-            checkpointpath=pjoin(exp_subdir,filename)
-
-            # compute losses for a test dataset
-            if config["evalscript"]=="basic":
-                eval_dict_list_condition=tmp_eval.compute_losses(checkpointpath,eval_tag)
-            elif config["evalscript"]=="detection":
-                eval_dict_list_condition=tmp_eval.compute_losses_detection(checkpointpath,eval_tag,fixed_mic_dist=config["fixed_mic_dist"])
-
-            return eval_dict_list_condition
-        
-def eval_baseline(config):
-        
-    eval_tag=config["baseline"]
-    config_train=config
-    # create evaluator object
-    tmp_eval = Evaluator(config,config_train)
-    eval_dict_list=tmp_eval.compute_losses_baseline(eval_tag)
-    return eval_dict_list
-
-def save_batch_audios(sContent,sStyle,sTarget,sPrediction,sAnecho,eval_tag,batch_nr,dirsounds):
-    batch_size=sContent.shape[0]
-    [audiosave(pjoin(dirsounds,eval_tag + "_b"+ str(batch_nr)+ "_i"+ str(i) +'_content.wav'), sContent[i,:,:].cpu(), 48000) for i in range(batch_size)]
-    [audiosave(pjoin(dirsounds,eval_tag + "_b"+ str(batch_nr)+ "_i"+ str(i) +'_style.wav'), sStyle[i,:,:].cpu(), 48000) for i in range(batch_size)]
-    [audiosave(pjoin(dirsounds,eval_tag + "_b"+ str(batch_nr)+ "_i"+ str(i) +'_target.wav'), sTarget[i,:,:].cpu(), 48000) for i in range(batch_size)]
-    [audiosave(pjoin(dirsounds,eval_tag + "_b"+ str(batch_nr)+ "_i"+ str(i) +'_prediction.wav'), sPrediction[i,:,:].cpu(), 48000) for i in range(batch_size)]
-    [audiosave(pjoin(dirsounds,eval_tag + "_b"+ str(batch_nr)+ "_i"+ str(i) +'_anecho.wav'), sAnecho[i,:,:].cpu(), 48000) for i in range(batch_size)]
+# def save_batch_audios(sContent,sStyle,sTarget,sPrediction,sAnecho,eval_tag,batch_nr,dirsounds):
+#     batch_size=sContent.shape[0]
+#     [audiosave(pjoin(dirsounds,eval_tag + "_b"+ str(batch_nr)+ "_i"+ str(i) +'_content.wav'), sContent[i,:,:].cpu(), 48000) for i in range(batch_size)]
+#     [audiosave(pjoin(dirsounds,eval_tag + "_b"+ str(batch_nr)+ "_i"+ str(i) +'_style.wav'), sStyle[i,:,:].cpu(), 48000) for i in range(batch_size)]
+#     [audiosave(pjoin(dirsounds,eval_tag + "_b"+ str(batch_nr)+ "_i"+ str(i) +'_target.wav'), sTarget[i,:,:].cpu(), 48000) for i in range(batch_size)]
+#     [audiosave(pjoin(dirsounds,eval_tag + "_b"+ str(batch_nr)+ "_i"+ str(i) +'_prediction.wav'), sPrediction[i,:,:].cpu(), 48000) for i in range(batch_size)]
+#     [audiosave(pjoin(dirsounds,eval_tag + "_b"+ str(batch_nr)+ "_i"+ str(i) +'_anecho.wav'), sAnecho[i,:,:].cpu(), 48000) for i in range(batch_size)]
 
 
 def eval_experiment(config):
 
+    eval_dict_list=[]
     eval_dir=config["eval_dir"]
     eval_file_name=config["eval_file_name"]
 
-    eval_dict_list_exp=[]
+    # ---- initialize evaluator ----
+    # (metrics, baselines, dataset, dataloader)
+    myeval = Evaluator(config)
+
+    # ---- evaluate oracle data  -----
+    eval_dict_list.extend(myeval.compute_metrics_oracle())
+    # list -> df and save 
+    pd.DataFrame(eval_dict_list).to_csv(eval_dir+eval_file_name, index=False)
+    print(f"Updated metrics -> oracle ")
+    
+    # --- evaluate baselines ----
+    eval_dict_list.extend(myeval.baselines.compute_metrics_baselines("anechoic+fins"))
+    eval_dict_list.extend(myeval.baselines.compute_metrics_baselines("dfnet+fins"))
+    eval_dict_list.extend(myeval.baselines.compute_metrics_baselines("wpe+fins"))
+    # list -> df and save 
+    pd.DataFrame(eval_dict_list).to_csv(eval_dir+eval_file_name, index=False)
+    print(f"Updated metrics -> baselines ")
+
+    # ---- evaluate my trained models ----
+    # a loop over all conditions of the considered experiment 
+    # each condition contains a checkpoint for a different model version
     for subdir in os.listdir(eval_dir):
-        subdir_path = os.path.join(eval_dir, subdir)
-        if os.path.isdir(subdir_path) & (subdir!="eval_extras"):
-
-            print(f"Processing trainig results: {subdir_path}")
-            eval_dict_list_exp.extend(eval_condition(config,subdir_path,"checkpointbest.pt"))
-            print(f"Updated results to contain measures for {subdir_path}")
-
-            pd.DataFrame(eval_dict_list_exp).to_csv(eval_dir+eval_file_name, index=False)
-            print(f"Saved final results")
-
+        exp_subdir = os.path.join(eval_dir, subdir)
+        if os.path.isdir(exp_subdir):
+            print(f"Processing trainig results: {exp_subdir}")
+            # specify training params file
+            tmp_config_train=hlp.load_config(pjoin(exp_subdir,"train_config.yaml"))
+            # checkpoint file path
+            tmp_checkpointpath=pjoin(exp_subdir,"checkpointbest.pt")
+            # name of this experiment condition
+            tmp_eval_tag=pjoin(exp_subdir).split('/')[-1]
+            # compute metrics for this model version
+            tmp_dict_eval=myeval.compute_metrics_checkpoint(tmp_checkpointpath,tmp_eval_tag)
+            # add the metrics to the main list containing all eval results
+            eval_dict_list.extend(tmp_dict_eval)
+            # list -> df and save 
+            pd.DataFrame(eval_dict_list).to_csv(eval_dir+eval_file_name, index=False)
+            print(f"Updated metrics: predictions of model {exp_subdir}")
 
 
 if __name__ == "__main__":
@@ -322,27 +320,23 @@ if __name__ == "__main__":
     config=hlp.load_config(pjoin("/home/ubuntu/joanna/reverb-match-cond-u-net/config/basic.yaml"))
 
     config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
-    config["evalsavedir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
     config["N_datapoints"] = 0 # if 0 - whole test set included
-    config["evalscript"]="basic"
 
-    # Compute for re-reverberation
-    config["savedir_sounds"]="/home/ubuntu/joanna/reverb-match-cond-u-net/sounds/dereverb/"
-    config["eval_file_name"] = "mymodels_eval_dereverb.csv"
+    config["eval_file_name"] = "eval_dereverb.csv"
     config["rt60diffmin"] = -2
     config["rt60diffmax"] = -0.2
     eval_experiment(config)
 
     # Compute for difficult de-reverberation
     config["savedir_sounds"]="/home/ubuntu/joanna/reverb-match-cond-u-net/sounds/rereverb/"
-    config["eval_file_name"] = "mymodels_eval_rereverb.csv"
+    config["eval_file_name"] = "eval_rereverb.csv"
     config["rt60diffmin"] = 0.2
     config["rt60diffmax"] = 2
     eval_experiment(config)
 
     # Compute for all examples
     config["savedir_sounds"]="/home/ubuntu/joanna/reverb-match-cond-u-net/sounds/all_batches/"
-    config["eval_file_name"] = "mymodels_eval_all_batches.csv"
+    config["eval_file_name"] = "eval_all_batches.csv"
     config["rt60diffmin"] = -3
     config["rt60diffmax"] = 3
     eval_experiment(config)
