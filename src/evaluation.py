@@ -16,7 +16,7 @@ import random
 # my modules
 import dataset
 import baselines
-import loss_mel, loss_stft, loss_waveform
+import loss_mel, loss_stft, loss_waveform, loss_embedd
 import trainer
 import helpers as hlp
 from torch.utils.data import Subset
@@ -34,7 +34,9 @@ class Evaluator(torch.nn.Module):
     def load_metrics(self):
         device=self.config["device"]
 
-        self.metrics= {
+        my_best_checkpoint_path="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/10-06-2024--15-02_c_wunet_stft+wave_0.8_0.2/checkpointbest.pt"
+
+        self.measures= {
             "multi-stft" : loss_stft.MultiResolutionSTFTLoss().to(device), 
             "multi-mel"  : loss_mel.MultiMelSpectrogramLoss().to(device),
             "multi-wave" : loss_waveform.MultiWindowShapeLoss().to(device),
@@ -46,7 +48,8 @@ class Evaluator(torch.nn.Module):
             "srmr" : SpeechReverberationModulationEnergyRatio(16000).to(device),
             "pesq" : PerceptualEvaluationSpeechQuality(16000, 'wb').to(device),
             "stoi" : ShortTimeObjectiveIntelligibility(16000).to(device),
-            "emb_cos": torch.nn.CosineSimilarity(dim=2,eps=1e-8).to(device),
+            "emb_cos": loss_embedd.EmbeddingLossCosine(my_best_checkpoint_path,device="cuda"),
+            "emb_euc": loss_embedd.EmbeddingLossEuclidean(my_best_checkpoint_path,device="cuda"),
             "squim_obj" : SQUIM_OBJECTIVE.get_model().to(device),
             "squim_subj" : SQUIM_SUBJECTIVE.get_model().to(device)
         }
@@ -82,11 +85,13 @@ class Evaluator(torch.nn.Module):
             sContent, sStyle, sTarget, sAnecho, sStyle_anecho = data
             # get metrics
             # -> content : target 
-            eval_dict_list.append(self.audiometrics4batch(j,"oracle","content:target",sContent,sTarget,nmref=sStyle_anecho))
+            eval_dict_list.append(self.metrics4batch(j,"oracle","content:target",sContent,sTarget,nmref=sStyle_anecho))
             # -> content : anechoic
             eval_dict_list.append(self.metrics4batch(j,"oracle","content:anecho",sContent,sAnecho,nmref=sStyle_anecho))
             # -> content : style
             eval_dict_list.append(self.metrics4batch(j,"oracle","content:style",sContent,sStyle,nmref=sStyle_anecho))
+            # -> r(content) : r(target) 
+            eval_dict_list.append(self.metrics4batch(j,"oracle","r(content):r(target)",sContent-sAnecho,sTarget-sAnecho,nmref=sStyle_anecho))
 
         return eval_dict_list
     
@@ -97,11 +102,12 @@ class Evaluator(torch.nn.Module):
         torch.manual_seed(0)
 
         # load training configuration
+        device=self.config["device"]
         config_train=hlp.load_config(pjoin(os.path.dirname(checkpointpath),"train_config.yaml"))
         # load model architecture
-        model=trainer.load_chosen_model(config_train,config_train["modeltype"]).to(config["device"])
+        model=trainer.load_chosen_model(config_train,config_train["modeltype"]).to(device)
         # load weights from checkpoint
-        train_results=torch.load(os.path.join(checkpointpath),map_location=self.config["device"])
+        train_results=torch.load(os.path.join(checkpointpath),map_location=device)
         model.load_state_dict(train_results["model_state_dict"])
 
         eval_dict_list=[]
@@ -109,8 +115,8 @@ class Evaluator(torch.nn.Module):
             # get datapoint 
             sContent, sStyle, sTarget, sAnecho, sStyle_anecho = data
             # get prediction
-            _, _, _, sPrediction=self.infer(data)
-            if bool(self.config_train["is_vae"]):      
+            _, _, _, sPrediction=trainer.infer(model, data, device)
+            if bool(config_train["is_vae"]):      
                 sPrediction, mu, log_var = sPrediction
             # get metrics
             # -> predicion : target
@@ -118,11 +124,15 @@ class Evaluator(torch.nn.Module):
             # -> predicion : content
             eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:content",sPrediction,sContent,nmref=sStyle_anecho))
             # -> predicion : style
-            eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:style",sPrediction,sStyle,nmref=sStyle_anecho))
+            eval_dict_list.append(self.metrics4batch(j,eval_tag,"r(prediction):r(style)",sPrediction,sStyle,nmref=sStyle_anecho))
+            # -> reverb(predicion) : reverb(target)
+            eval_dict_list.append(self.metrics4batch(j,eval_tag,"r(prediction):r(target)",sPrediction-sAnecho,sTarget-sAnecho,nmref=sStyle_anecho))
+            # -> reverb(predicion) : reverb(content)
+            eval_dict_list.append(self.metrics4batch(j,eval_tag,"r(prediction):r(content)",sPrediction-sAnecho,sContent-sAnecho,nmref=sStyle_anecho))
 
         return eval_dict_list
     
-    def compute_metrics_baseline(self,baseline):
+    def compute_metrics_baselines(self,baseline):
         
         np.random.seed(0)
         random.seed(0)
@@ -133,7 +143,7 @@ class Evaluator(torch.nn.Module):
             # get datapoint 
             sContent, sStyle, sTarget, sAnecho, sStyle_anecho = data
             # get prediction
-            _, _, _, sPrediction=self.baseline.infer_baseline(data,baseline)
+            _, _, _, sPrediction=self.baselines.infer_baseline(data,baseline)
             # get metrics
             # -> predicion : target
             eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:target",sPrediction,sTarget,nmref=sStyle_anecho))
@@ -141,6 +151,10 @@ class Evaluator(torch.nn.Module):
             eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:content",sPrediction,sContent,nmref=sStyle_anecho))
             # -> predicion : style
             eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:style",sPrediction,sStyle,nmref=sStyle_anecho))
+            # -> r(predicion) : r(target)
+            eval_dict_list.append(self.metrics4batch(j,baseline,"r(prediction):r(target)",sPrediction-sAnecho,sTarget-sAnecho,nmref=sStyle_anecho))
+            # -> r(predicion) : r(content)
+            eval_dict_list.append(self.metrics4batch(j,baseline,"r(prediction):r(content)",sPrediction-sAnecho,sContent-sAnecho,nmref=sStyle_anecho))
 
         return eval_dict_list
     
@@ -183,16 +197,8 @@ class Evaluator(torch.nn.Module):
     def metrics4batch(self, idx, label, comp_name, x1, x2,nmref=None):
 
         device= self.config["device"]
-
-        if len(x1.shape)<3:
-            x1=x1.unsqueeze(0)
-        if len(x2.shape)<3:
-            x2=x2.unsqueeze(0)
-            
-        x1_emb=self.model.conditioning_network(x1)
-        x2_emb=self.model.conditioning_network(x2)
-
-        x1=x1.squeeze(1)
+        # prepare dimensions (B,C,N) -> (B,N)
+        x1=x1.squeeze(1) 
         x2=x2.squeeze(1)
         nmref=nmref.squeeze(1)
         # Resample - losses operate on 16kHz sampling rate
@@ -216,7 +222,6 @@ class Evaluator(torch.nn.Module):
             print("Could not compute stoi for this signal for " + str(self.failcount) + "times")
 
         # ----- Compute non-intrusive metrics -----
-
         try:
             L_pesq_x1, L_stoi_x1, L_sisdr_x1=self.measures["squim_obj"](x1)
             L_pesq_x2, L_stoi_x2, L_sisdr_x2=self.measures["squim_obj"](x2)
@@ -237,6 +242,7 @@ class Evaluator(torch.nn.Module):
         'label': label,
         'idx':idx, 
         'compared': comp_name,
+        'L_mse': self.measures["mse"](x1,x2).item(),
         'L_multi-stft-sc': self.measures["multi-stft"](x1,x2)[0].item(),
         'L_multi-stft-mag': self.measures["multi-stft"](x1,x2)[1].item(), 
         'L_multi-mel': self.measures["multi-mel"](x1,x2).item(),
@@ -253,12 +259,49 @@ class Evaluator(torch.nn.Module):
         'L_pesq_nidiff': torch.mean(torch.abs(L_pesq_x1-L_pesq_x2)).item(),
         'L_stoi_nidiff': torch.mean(torch.abs(L_stoi_x1-L_stoi_x2)).item(), 
         'L_sisdr_nidiff': torch.mean(torch.abs(L_sisdr_x1-L_sisdr_x2)).item(),  
-        'L_emb_cos': (1-((torch.mean(self.measures["emb_cos"](x1_emb,x2_emb))+ 1) / 2)).item(), 
-        'L_emb_euc': torch.dist(x1_emb,x2_emb).item()
+        'L_emb_cos': self.measures["emb_cos"](x1,x2).item(), 
+        'L_emb_euc': self.measures["emb_euc"](x1,x2).item()
         }
         
         return dict_row
         
+
+    def compare_audios_checkpoint(self,checkpointpath,idx):
+                    
+        np.random.seed(0)
+        random.seed(0)
+        torch.manual_seed(0)
+
+        # load training configuration
+        device=self.config["device"]
+        config_train=hlp.load_config(pjoin(os.path.dirname(checkpointpath),"train_config.yaml"))
+        # load model architecture
+        model=trainer.load_chosen_model(config_train,config_train["modeltype"]).to(device)
+        # load weights from checkpoint
+        train_results=torch.load(os.path.join(checkpointpath),map_location=device)
+        model.load_state_dict(train_results["model_state_dict"])
+        # get datapoint 
+        data=self.testset[idx]
+        sContent, sStyle, sTarget, sAnecho, sStyle_anecho = data
+        # get prediction of the model
+        _, _, _, sPred_model=trainer.infer(model, data, device)
+        if bool(config_train["is_vae"]):      
+            sPred_model, mu, log_var = sPred_model
+        # get prediction of the baselines
+        sPred_anecho_fins=self.baselines.infer_baseline(data,"anecho+fins")
+        sPred_dfnet_fins=self.baselines.infer_baseline(data,"anecho+fins")
+        sPred_wpe_fins=self.baselines.infer_baseline(data,"anecho+fins")
+
+        audios = {"sContent" : sContent,
+                    "sTarget" : sTarget,
+                    "sAnecho" : sAnecho,
+                    "sPred_model" : sPred_model,
+                    "sPred_anecho_fins" : sPred_anecho_fins,
+                    "sPred_dfnet_fins" : sPred_dfnet_fins,
+                    "sPred_wpe_fins" : sPred_wpe_fins
+        }
+
+        return audios
 
 # def save_batch_audios(sContent,sStyle,sTarget,sPrediction,sAnecho,eval_tag,batch_nr,dirsounds):
 #     batch_size=sContent.shape[0]
@@ -280,26 +323,29 @@ def eval_experiment(config):
     myeval = Evaluator(config)
 
     # ---- evaluate oracle data  -----
+    print(f"Computing metrics -> oracle ")
     eval_dict_list.extend(myeval.compute_metrics_oracle())
     # list -> df and save 
     pd.DataFrame(eval_dict_list).to_csv(eval_dir+eval_file_name, index=False)
-    print(f"Updated metrics -> oracle ")
+
     
     # --- evaluate baselines ----
-    eval_dict_list.extend(myeval.baselines.compute_metrics_baselines("anechoic+fins"))
-    eval_dict_list.extend(myeval.baselines.compute_metrics_baselines("dfnet+fins"))
-    eval_dict_list.extend(myeval.baselines.compute_metrics_baselines("wpe+fins"))
+    print(f"Computing metrics -> baselines ")
+    eval_dict_list.extend(myeval.compute_metrics_baselines("anecho+fins"))
+    eval_dict_list.extend(myeval.compute_metrics_baselines("dfnet+fins"))
+    eval_dict_list.extend(myeval.compute_metrics_baselines("wpe+fins"))
     # list -> df and save 
     pd.DataFrame(eval_dict_list).to_csv(eval_dir+eval_file_name, index=False)
-    print(f"Updated metrics -> baselines ")
+
 
     # ---- evaluate my trained models ----
+    print(f"Computing metrics -> models ")
     # a loop over all conditions of the considered experiment 
     # each condition contains a checkpoint for a different model version
     for subdir in os.listdir(eval_dir):
         exp_subdir = os.path.join(eval_dir, subdir)
         if os.path.isdir(exp_subdir):
-            print(f"Processing trainig results: {exp_subdir}")
+            print(f"...using training results {exp_subdir}")
             # specify training params file
             tmp_config_train=hlp.load_config(pjoin(exp_subdir,"train_config.yaml"))
             # checkpoint file path
@@ -312,128 +358,37 @@ def eval_experiment(config):
             eval_dict_list.extend(tmp_dict_eval)
             # list -> df and save 
             pd.DataFrame(eval_dict_list).to_csv(eval_dir+eval_file_name, index=False)
-            print(f"Updated metrics: predictions of model {exp_subdir}")
 
 
 if __name__ == "__main__":
 
     config=hlp.load_config(pjoin("/home/ubuntu/joanna/reverb-match-cond-u-net/config/basic.yaml"))
+    
+    myeval = Evaluator(config)
 
-    config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
-    config["N_datapoints"] = 0 # if 0 - whole test set included
+    my_best_checkpoint_path="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/10-06-2024--15-02_c_wunet_stft+wave_0.8_0.2/checkpointbest.pt"
 
-    config["eval_file_name"] = "eval_dereverb.csv"
-    config["rt60diffmin"] = -2
-    config["rt60diffmax"] = -0.2
-    eval_experiment(config)
+    audios=myeval.compare_audios_checkpoint(my_best_checkpoint_path,0)
 
-    # Compute for difficult de-reverberation
-    config["savedir_sounds"]="/home/ubuntu/joanna/reverb-match-cond-u-net/sounds/rereverb/"
-    config["eval_file_name"] = "eval_rereverb.csv"
-    config["rt60diffmin"] = 0.2
-    config["rt60diffmax"] = 2
-    eval_experiment(config)
 
-    # Compute for all examples
-    config["savedir_sounds"]="/home/ubuntu/joanna/reverb-match-cond-u-net/sounds/all_batches/"
-    config["eval_file_name"] = "eval_all_batches.csv"
-    config["rt60diffmin"] = -3
-    config["rt60diffmax"] = 3
-    eval_experiment(config)
+    # config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
+    # config["N_datapoints"] = 10 # if 0 - whole test set included
+
+    # config["eval_file_name"] = "eval_dereverb.csv"
+    # config["rt60diffmin"] = -2
+    # config["rt60diffmax"] = -0.2
+    # eval_experiment(config)
+
+    # # Compute for difficult de-reverberation
+    # config["savedir_sounds"]="/home/ubuntu/joanna/reverb-match-cond-u-net/sounds/rereverb/"
+    # config["eval_file_name"] = "eval_rereverb.csv"
+    # config["rt60diffmin"] = 0.2
+    # config["rt60diffmax"] = 2
+    # eval_experiment(config)
 
     # # Compute for all examples
-    # config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
-    # config["evalsavedir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
+    # config["savedir_sounds"]="/home/ubuntu/joanna/reverb-match-cond-u-net/sounds/all_batches/"
     # config["eval_file_name"] = "eval_all_batches.csv"
     # config["rt60diffmin"] = -3
     # config["rt60diffmax"] = 3
-    # config["N_datapoints"] = 0 # if 0 - whole test set included
-    # config["evalscript"]="basic"
-    # eval_dict=eval_condition(config,pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2"),"checkpointbest.pt")
-    # pd.DataFrame(eval_dict).to_csv(pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2")+config["eval_file_name"], index=False)
-    # print(f"Saved condition results")
-    # # eval_experiment(config)
-
-    # # Compute for re-reverberation
-    # config["eval_file_name"] = "eval_rereverb.csv"
-    # config["rt60diffmin"] = -2
-    # config["rt60diffmax"] = -0.2
-    # config["N_datapoints"] = 0 # if 0 - whole test set included
-    # eval_dict=eval_condition(config,pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2"),"checkpointbest.pt")
-    # pd.DataFrame(eval_dict).to_csv(pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2")+config["eval_file_name"], index=False)
-    # print(f"Saved condition results")
-    # # eval_experiment(config)
-
-    # # Compute for difficult de-reverberation
-    # config["eval_file_name"] = "eval_dereverb.csv"
-    # config["rt60diffmin"] = 0.2
-    # config["rt60diffmax"] = 2
-    # config["N_datapoints"] = 0 # if 0 - whole test set included
-    # eval_dict=eval_condition(config,pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2"),"checkpointbest.pt")
-    # pd.DataFrame(eval_dict).to_csv(pjoin(config["eval_dir"], "20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2")+config["eval_file_name"], index=False)
-    # print(f"Saved condition results")
-    # # eval_experiment(config)
-
-
-    # # Compute for a baseline 
-    # config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
-    # config["eval_file_name"] = "eval_wpe+fins.csv"
-    # config["rt60diffmin"] = -3
-    # config["rt60diffmax"] = 3
-    # config["N_datapoints"] = 0 # if 0 - whole test set included
-    # config["baseline"]= "wpe+fins"
-    # eval_dict=eval_baseline(config)
-    # pd.DataFrame(eval_dict).to_csv(pjoin(config["eval_dir"])+config["eval_file_name"], index=False)
-    # print(f"Saved condition results")
-    # # eval_experiment(config)
-
-
-    # # Compute for all examples
-    # config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-09-05-2024/"
-    # config["evalsavedir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-09-05-2024/"
-    # config["eval_file_name"] = "eval_detection_fixedmicpos.csv"
-    # config["rt60diffmin"] = -3
-    # config["rt60diffmax"] = 3
-    # config["N_datapoints"] = 1000 # if 0 - whole test set included
-    # config["evalscript"]="detection"
-    # config["fixed_mic_dist"]=0.1
-    # eval_dict=eval_condition(config,pjoin(config["eval_dir"], "14-05-2024--23-12_c_wunet_stft_1"),"checkpointbest.pt")
-    # pd.DataFrame(eval_dict).to_csv(config["eval_dir"]+config["eval_file_name"], index=False)
-    # print(f"Saved detection analysis")
-
-    # # Compute for all examples
-    # config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-09-05-2024/"
-    # config["evalsavedir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-09-05-2024/"
-    # config["eval_file_name"] = "eval_detection_randmicpos.csv"
-    # config["rt60diffmin"] = -3
-    # config["rt60diffmax"] = 3
-    # config["N_datapoints"] = 1000 # if 0 - whole test set included
-    # config["evalscript"]="detection"
-    # config["fixed_mic_dist"]=None
-    # eval_dict=eval_condition(config,pjoin(config["eval_dir"], "14-05-2024--23-12_c_wunet_stft_1"),"checkpointbest.pt")
-    # pd.DataFrame(eval_dict).to_csv(config["eval_dir"]+config["eval_file_name"], index=False)
-    # print(f"Saved detection analysis")
-
-
-
-
-
-
-
-    
-            
-
-            
-
-           
-
-
-   
-
-
-
-
-
-
-
-
+    # eval_experiment(config)

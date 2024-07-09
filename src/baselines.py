@@ -43,10 +43,10 @@ class Baselines(torch.nn.Module):
 
         # Function to infer target audio
         with torch.no_grad():
-            sContent_in = data[0].to(device) # (batch_size, num_channels, signal_length)
-            sStyle_in=data[1].to(device) # (batch_size, num_channels, signal_length)
-            sTarget_gt=data[2].to(device) # (batch_size, num_channels, signal_length)
-            sAnecho=data[3].to(device) # (batch_size, num_channels, signal_length)
+            sContent_in = hlp.unsqueezeif2D(data[0]).to(device) # (batch_size, num_channels, signal_length)
+            sStyle_in=hlp.unsqueezeif2D(data[1]).to(device) # (batch_size, num_channels, signal_length)
+            sTarget_gt=hlp.unsqueezeif2D(data[2]).to(device) # (batch_size, num_channels, signal_length)
+            sAnecho=hlp.unsqueezeif2D(data[3]).to(device) # (batch_size, num_channels, signal_length)
 
             batch_size=sContent_in.shape[0]
 

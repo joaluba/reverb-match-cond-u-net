@@ -11,8 +11,6 @@
 
 """Mel-spectrogram loss modules."""
 import os
-import librosa
-import torchaudio
 import torch
 import torch.nn.functional as F
 import helpers as hlp
@@ -35,22 +33,23 @@ class EmbeddingLossCosine(torch.nn.Module):
 
     def forward(self, x1, x2):
         
+        # (B,N) -> (B,C,N) 
         if len(x1.shape)<3:
-            x1=x1.unsqueeze(0)
+            x1=x1.unsqueeze(1)
         if len(x2.shape)<3:
-            x2=x2.unsqueeze(0)
+            x2=x2.unsqueeze(1)
             
         x1_emb=self.reverb_encoder(x1)
         x2_emb=self.reverb_encoder(x2)
 
-        loss = (1-((torch.mean(self.criterion_emb(x1_emb,x2_emb))+ 1) / 2))
+        loss = torch.mean(self.criterion_emb(x1_emb,x2_emb), 0)
         return loss
 
 class EmbeddingLossEuclidean(torch.nn.Module):
     def __init__(self,checkpointpath,device="cuda"):
         super(EmbeddingLossEuclidean, self).__init__()
 
-        self.criterion_emb=torch.nn.functional.pairwise_distance().to(device)
+        self.criterion_emb=torch.nn.PairwiseDistance().to(device)
          # load training configuration
         config_train=hlp.load_config(os.path.join(os.path.dirname(checkpointpath),"train_config.yaml"))
         # load model architecture
@@ -62,14 +61,15 @@ class EmbeddingLossEuclidean(torch.nn.Module):
 
     def forward(self, x1, x2):
         
+        # (B,N) -> (B,C,N) 
         if len(x1.shape)<3:
-            x1=x1.unsqueeze(0)
+            x1=x1.unsqueeze(1)
         if len(x2.shape)<3:
-            x2=x2.unsqueeze(0)
+            x2=x2.unsqueeze(1)
             
         x1_emb=self.reverb_encoder(x1)
         x2_emb=self.reverb_encoder(x2)
 
-        loss = self.criterion_emb(x1_emb,x2_emb)
+        loss = torch.mean(self.criterion_emb(x1_emb,x2_emb), 0)
         return loss
 
