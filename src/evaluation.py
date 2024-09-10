@@ -6,7 +6,6 @@ import sys
 import os
 from os.path import join as pjoin
 from torch.utils.tensorboard import SummaryWriter
-import speechmetrics
 from torchmetrics.audio import ScaleInvariantSignalDistortionRatio, SpeechReverberationModulationEnergyRatio, PerceptualEvaluationSpeechQuality, ShortTimeObjectiveIntelligibility
 from torchaudio.pipelines import SQUIM_OBJECTIVE, SQUIM_SUBJECTIVE
 import numpy as np
