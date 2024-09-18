@@ -265,7 +265,7 @@ class Evaluator(torch.nn.Module):
         return dict_row
         
 
-    def compare_audios_checkpoint(self,checkpointpath,idx):
+    def compare_audios_checkpoint(self,checkpointpath,idx,save=0):
                     
         np.random.seed(0)
         random.seed(0)
@@ -279,7 +279,8 @@ class Evaluator(torch.nn.Module):
         # load weights from checkpoint
         train_results=torch.load(os.path.join(checkpointpath),map_location=device)
         model.load_state_dict(train_results["model_state_dict"])
-        # get datapoint 
+        # get datapoint
+        # TODO: get datapoint with etended getitem and save also the cloned RIR 
         data=self.testset[idx]
         sContent, sStyle, sTarget, sAnecho, sStyle_anecho = data
         # get prediction of the model
@@ -299,6 +300,12 @@ class Evaluator(torch.nn.Module):
                     "sPred_dfnet_fins" : sPred_dfnet_fins,
                     "sPred_wpe_fins" : sPred_wpe_fins
         }
+
+        if save==1:
+            print() # TODO: save all audios 
+        elif save==2:
+            print()# TODO: save only prediction result
+
 
         return audios
 
