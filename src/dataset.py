@@ -1,5 +1,4 @@
 import torch
-import scipy
 import numpy as np
 from torch.utils.data import Dataset
 import torchaudio
@@ -66,9 +65,9 @@ class DatasetReverbTransfer(Dataset):
             r2 = hlp.torch_load_mono(self.style_ir,self.fs)
 
         # Convolve signals with impulse responses
-        s1r1 = torch.from_numpy(scipy.signal.fftconvolve(s1, r1,mode="full"))[:,:self.sig_len]
-        s2r2 = torch.from_numpy(scipy.signal.fftconvolve(s2, r2,mode="full"))[:,:self.sig_len]
-        s1r2 = torch.from_numpy(scipy.signal.fftconvolve(s1, r2,mode="full"))[:,:self.sig_len]
+        s1r1 = torch.from_numpy(signal.fftconvolve(s1, r1,mode="full"))[:,:self.sig_len]
+        s2r2 = torch.from_numpy(signal.fftconvolve(s2, r2,mode="full"))[:,:self.sig_len]
+        s1r2 = torch.from_numpy(signal.fftconvolve(s1, r2,mode="full"))[:,:self.sig_len]
 
         # # Synchronize all signals to anechoic signal
         _,s1r1,_ = hlp.synch_sig2(s1,s1r1)
@@ -187,8 +186,8 @@ class DatasetReverbTransfer(Dataset):
             r1b_early, r1b_late = hlp.rir_split_earlylate(r1b,self.fs,cutpoint_ms)
 
         # content a
-        s1r1_early = torch.from_numpy(scipy.signal.fftconvolve(s1, r1_early,mode="full"))[:,:self.sig_len]
-        s1r1_late = torch.from_numpy(scipy.signal.fftconvolve(s1, r1_late,mode="full"))[:,:self.sig_len]
+        s1r1_early = torch.from_numpy(signal.fftconvolve(s1, r1_early,mode="full"))[:,:self.sig_len]
+        s1r1_late = torch.from_numpy(signal.fftconvolve(s1, r1_late,mode="full"))[:,:self.sig_len]
         s1r1, sc_max=hlp.torch_standardize_max_abs(s1r1_early+s1r1_late,out=True) # Target all
         s1r1_early=s1r1_early/sc_max
         s1r1_late=s1r1_late/sc_max
@@ -200,8 +199,8 @@ class DatasetReverbTransfer(Dataset):
 
         # content b
         if gen_rir_b:
-            s1r1b_early = torch.from_numpy(scipy.signal.fftconvolve(s1, r1b_early,mode="full"))[:,:self.sig_len]
-            s1r1b_late = torch.from_numpy(scipy.signal.fftconvolve(s1, r1b_late,mode="full"))[:,:self.sig_len]
+            s1r1b_early = torch.from_numpy(signal.fftconvolve(s1, r1b_early,mode="full"))[:,:self.sig_len]
+            s1r1b_late = torch.from_numpy(signal.fftconvolve(s1, r1b_late,mode="full"))[:,:self.sig_len]
             s1r1b, sc_max=hlp.torch_standardize_max_abs(s1r1b_early+s1r1b_late,out=True) # Target all
             s1r1b_early=s1r1b_early/sc_max
             s1r1b_late=s1r1b_late/sc_max
@@ -212,8 +211,8 @@ class DatasetReverbTransfer(Dataset):
             s1r1b_late=hlp.shiftby(s1r1b_late,lag)
 
         # target
-        s1r2_early = torch.from_numpy(scipy.signal.fftconvolve(s1, r2_early,mode="full"))[:,:self.sig_len]
-        s1r2_late = torch.from_numpy(scipy.signal.fftconvolve(s1, r2_late,mode="full"))[:,:self.sig_len]
+        s1r2_early = torch.from_numpy(signal.fftconvolve(s1, r2_early,mode="full"))[:,:self.sig_len]
+        s1r2_late = torch.from_numpy(signal.fftconvolve(s1, r2_late,mode="full"))[:,:self.sig_len]
         s1r2, sc_max=hlp.torch_standardize_max_abs(s1r2_early+s1r2_late,out=True) # Target all
         s1r2_early=s1r2_early/sc_max
         s1r2_late=s1r2_late/sc_max
@@ -225,8 +224,8 @@ class DatasetReverbTransfer(Dataset):
         
 
         # style
-        s2r2 = torch.from_numpy(scipy.signal.fftconvolve(s2, r2,mode="full"))[:,:self.sig_len]
-        s2r1 = torch.from_numpy(scipy.signal.fftconvolve(s2, r1,mode="full"))[:,:self.sig_len]
+        s2r2 = torch.from_numpy(signal.fftconvolve(s2, r2,mode="full"))[:,:self.sig_len]
+        s2r1 = torch.from_numpy(signal.fftconvolve(s2, r1,mode="full"))[:,:self.sig_len]
         s2r2=hlp.torch_standardize_max_abs(s2r2) # Style sound
         s2r1=hlp.torch_standardize_max_abs(s2r1) # "Flipped" target
         # Synchronize all signals to anechoic

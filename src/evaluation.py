@@ -106,7 +106,7 @@ class Evaluator(torch.nn.Module):
         # load model architecture
         model=trainer.load_chosen_model(config_train,config_train["modeltype"]).to(device)
         # load weights from checkpoint
-        train_results=torch.load(os.path.join(checkpointpath),map_location=device)
+        train_results=torch.load(os.path.join(checkpointpath),map_location=device, weights_only=True)
         model.load_state_dict(train_results["model_state_dict"])
 
         eval_dict_list=[]
@@ -164,7 +164,7 @@ class Evaluator(torch.nn.Module):
     #     random.seed(0)
     #     torch.manual_seed(0)
 
-    #     train_results=torch.load(os.path.join(checkpointpath),map_location=self.config["device"])
+    #     train_results=torch.load(os.path.join(checkpointpath),map_location=self.config["device"],weights_only=True))
     #     self.model.load_state_dict(train_results["model_state_dict"])
     #     N_datapoints=self.config["N_datapoints"]
 
@@ -265,49 +265,92 @@ class Evaluator(torch.nn.Module):
         return dict_row
         
 
-    def compare_audios_checkpoint(self,checkpointpath,idx,save=0):
+    def compare_audios_checkpoint(self,checkpointpath,idx,allsigs=False):
                     
         np.random.seed(0)
         random.seed(0)
         torch.manual_seed(0)
 
+        model_tag=checkpointpath.split('/')[-2] + "_" + os.path.basename(checkpointpath).split(".")[0]
         # load training configuration
         device=self.config["device"]
         config_train=hlp.load_config(pjoin(os.path.dirname(checkpointpath),"train_config.yaml"))
         # load model architecture
         model=trainer.load_chosen_model(config_train,config_train["modeltype"]).to(device)
         # load weights from checkpoint
-        train_results=torch.load(os.path.join(checkpointpath),map_location=device)
+        train_results=torch.load(os.path.join(checkpointpath),map_location=device,weights_only=True)
         model.load_state_dict(train_results["model_state_dict"])
         # get datapoint
-        # TODO: get datapoint with etended getitem and save also the cloned RIR 
-        data=self.testset[idx]
+        data=self.testset_orig[idx]
         sContent, sStyle, sTarget, sAnecho, sStyle_anecho = data
         # get prediction of the model
         _, _, _, sPred_model=trainer.infer(model, data, device)
         if bool(config_train["is_vae"]):      
             sPred_model, mu, log_var = sPred_model
-        # get prediction of the baselines
-        sPred_anecho_fins=self.baselines.infer_baseline(data,"anecho+fins")
-        sPred_dfnet_fins=self.baselines.infer_baseline(data,"anecho+fins")
-        sPred_wpe_fins=self.baselines.infer_baseline(data,"anecho+fins")
 
-        audios = {"sContent" : sContent,
-                    "sTarget" : sTarget,
-                    "sAnecho" : sAnecho,
-                    "sPred_model" : sPred_model,
-                    "sPred_anecho_fins" : sPred_anecho_fins,
-                    "sPred_dfnet_fins" : sPred_dfnet_fins,
-                    "sPred_wpe_fins" : sPred_wpe_fins
-        }
+        if allsigs==True:
 
-        if save==1:
-            print() # TODO: save all audios 
-        elif save==2:
-            print()# TODO: save only prediction result
+            # get the target signal with a cloned RIR (same room, but different position)
+            df_info=self.testset_orig.get_info(idx,id="style")
+            original_rir_path=df_info["ir_file_path"]
+            dir_name = os.path.dirname(original_rir_path)
+            file_name = os.path.basename(original_rir_path)
+            clone_file_name = "clone_" + file_name
+            # cloned impulse response
+            rir_clone = hlp.torch_load_mono(pjoin(dir_name,clone_file_name),self.testset_orig.fs)
+            import scipy.signal as signal
+            sTargetClone = torch.from_numpy(signal.fftconvolve(sAnecho.numpy(), rir_clone,mode="full"))[:,:self.testset_orig.sig_len]
+            # Synchronize to anechoic signal
+            _,sTargetClone,_ = hlp.synch_sig2(sAnecho,sTargetClone)
+            sTargetClone=hlp.torch_normalize_max_abs(sTargetClone)
 
-
+            # get prediction of the baselines
+            _,_,_,sPred_anecho_fins=self.baselines.infer_baseline(data,"anecho+fins")
+            _,_,_,sPred_dfnet_fins=self.baselines.infer_baseline(data,"anecho+fins")
+            _,_,_,sPred_wpe_fins=self.baselines.infer_baseline(data,"anecho+fins")
+            
+        
+            audios = {  "model_tag": model_tag,
+                        "testset_idx": idx,
+                        "sContent" : sContent,
+                        "sTarget" : sTarget,
+                        "sTargetClone" : sTargetClone,
+                        "sAnecho" : sAnecho,
+                        "sPred_model" : sPred_model.squeeze(0).cpu(),
+                        "sPred_anecho_fins" : sPred_anecho_fins.squeeze(0).cpu(),
+                        "sPred_dfnet_fins" : sPred_dfnet_fins.squeeze(0).cpu(),
+                        "sPred_wpe_fins" : sPred_wpe_fins.squeeze(0).cpu()
+                        }
+        
+        else: 
+            audios = {"model_tag": model_tag,
+                        "testset_idx": idx,
+                        "sContent" : sContent,
+                        "sTarget" : sTarget,
+                        "sAnecho" : sAnecho,
+                        "sPred_model" : sPred_model.squeeze(0).cpu()
+                        }
         return audios
+
+
+def save_compare_audios(audios,savedir,allsigs=False):
+    if allsigs==True:
+        # save synthetic signals
+        audiosave(pjoin(savedir,"testset_idx" + str(audios["testset_idx"]) + '--sContent.wav'), audios["sContent"].cpu(), 48000)
+        audiosave(pjoin(savedir,"testset_idx" + str(audios["testset_idx"]) + '--sAnecho.wav'), audios["sAnecho"].cpu(), 48000)
+        audiosave(pjoin(savedir,"testset_idx" + str(audios["testset_idx"]) + '--sTarget.wav'), audios["sTarget"].cpu(), 48000)
+        audiosave(pjoin(savedir,"testset_idx" + str(audios["testset_idx"]) + '--sTargetClone.wav'), audios["sTargetClone"].cpu(), 48000)
+        # save prediction result of our model
+        audiosave(pjoin(savedir,audios["model_tag"] + "--" + "testset_idx" + str(audios["testset_idx"]) + '--sPred_model.wav'), audios["sPred_model"].cpu(), 48000)
+        # save prediction result of the baselines
+        audiosave(pjoin(savedir,"testset_idx" + str(audios["testset_idx"]) + '--sPred_anecho_fins.wav'), audios["sPred_anecho_fins"].cpu(), 48000)
+        audiosave(pjoin(savedir,"testset_idx" + str(audios["testset_idx"]) + '--sPred_dfnet_fins.wav'), audios["sPred_dfnet_fins"].cpu(), 48000)
+        audiosave(pjoin(savedir,"testset_idx" + str(audios["testset_idx"]) + '--sPred_wpe_fins.wav'), audios["sPred_wpe_fins"].cpu(), 48000)
+
+
+    else:
+        audiosave(pjoin(savedir,audios["model_tag"] + "--" + "testset_idx" + str(audios["testset_idx"]) + '--sPred_model.wav'), audios["sPred_model"].cpu(), 48000)
+
 
 # def save_batch_audios(sContent,sStyle,sTarget,sPrediction,sAnecho,eval_tag,batch_nr,dirsounds):
 #     batch_size=sContent.shape[0]
