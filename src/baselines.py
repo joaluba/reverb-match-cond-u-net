@@ -31,7 +31,7 @@ class Baselines(torch.nn.Module):
         self.fins_config = hlp.load_config_fins(fins_config_path)
         # load fins model
         self.fins_model = model_fins.FilteredNoiseShaper(self.fins_config.model.params).to(self.config["device"])
-        state_dicts = torch.load(pjoin(fins_checkpoints_path,"epoch-122.pt"), map_location=self.config["device"])
+        state_dicts = torch.load(pjoin(fins_checkpoints_path,"epoch-122.pt"), map_location=self.config["device"],weights_only=True)
         self.fins_model.load_state_dict(state_dicts["model_state_dict"])
         self.fins_model.eval()
         # load dfnet
@@ -65,6 +65,8 @@ class Baselines(torch.nn.Module):
             elif baseline == "dfnet+fins":
                 sContent_derev = enhance(self.modeldf, self.df_state, sContent_in.squeeze(1).cpu()).unsqueeze(1)
                 sContent_derev=torch.stack([hlp.torch_normalize_max_abs(sContent_derev[i,:,:]) for i in range(batch_size)]).to(device)
+            else: 
+                print("Baseline" + baseline + " is not implemented")
             
             # ----- step 2: estimate RIR of the style -----
             # Noise for late part

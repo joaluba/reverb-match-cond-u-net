@@ -372,3 +372,76 @@ def truncate_ir_silence(ir, sample_rate, threshold_db=20):
     return truncated_ir.unsqueeze(0)
 
 
+def plot_2_waveforms(audio1, audio2, fs):
+    plt.rcParams.update({'font.size': 6})
+
+    time1 = np.linspace(0, len(audio1) / fs, num=len(audio1))
+    time2 = np.linspace(0, len(audio2) / fs, num=len(audio2))
+
+    # Create a figure and two subplots
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 2))
+
+    # Plot waveform of audio1
+    ax1.plot(time1, audio1)
+    ax1.set_title('Waveform 1')
+    ax1.set_xlabel('Time [s]')
+    ax1.set_ylabel('Amplitude')
+    ax1.grid(True)
+
+    # Plot waveform of audio2
+    ax2.plot(time2, audio2)
+    ax2.set_title('Waveform 2')
+    ax2.set_xlabel('Time [s]')
+    ax2.set_ylabel('Amplitude')
+    ax2.grid(True)
+
+    # Show the plot
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_2_spectrograms(audio1, audio2, fs):
+    from scipy.signal import stft
+
+    plt.rcParams.update({'font.size': 6})
+
+    # Compute STFT for both audio signals
+    f1, t1, Zxx1 = stft(audio1, fs=fs, nperseg=1024, noverlap=256)
+    f2, t2, Zxx2 = stft(audio2, fs=fs, nperseg=1024, noverlap=256)
+
+    # Limit the frequency to 10 kHz
+    freq_limit = 10000
+    freq_idx_limit1 = np.where(f1 <= freq_limit)[0]
+    freq_idx_limit2 = np.where(f2 <= freq_limit)[0]
+
+    f1_limited = f1[freq_idx_limit1]
+    f2_limited = f2[freq_idx_limit2]
+
+    Zxx1_limited = Zxx1[freq_idx_limit1, :]
+    Zxx2_limited = Zxx2[freq_idx_limit2, :]
+
+    # Convert magnitude to dB
+    Zxx1_dB = 20 * np.log10(np.abs(Zxx1_limited) + 1e-10)
+    Zxx2_dB = 20 * np.log10(np.abs(Zxx2_limited) + 1e-10)
+
+    # Create subplots for the two spectrograms
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 2))
+
+    # Plot spectrogram for audio1
+    pcm1 = ax1.pcolormesh(t1, f1_limited, Zxx1_dB, shading='gouraud', cmap='inferno')
+    ax1.set_title('Spectrogram 1 (dB, limited to 10 kHz)')
+    ax1.set_xlabel('Time [s]')
+    ax1.set_ylabel('Frequency [Hz]')
+    fig.colorbar(pcm1, ax=ax1, format="%+2.0f dB")
+
+    # Plot spectrogram for audio2
+    pcm2 = ax2.pcolormesh(t2, f2_limited, Zxx2_dB, shading='gouraud', cmap='inferno')
+    ax2.set_title('Spectrogram 2 (dB, limited to 10 kHz)')
+    ax2.set_xlabel('Time [s]')
+    ax2.set_ylabel('Frequency [Hz]')
+    fig.colorbar(pcm2, ax=ax2, format="%+2.0f dB")
+
+    # Show the plot
+    plt.tight_layout()
+    plt.show()
+

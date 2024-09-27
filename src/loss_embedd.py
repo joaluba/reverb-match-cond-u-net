@@ -55,7 +55,7 @@ class EmbeddingLossEuclidean(torch.nn.Module):
         # load model architecture
         model=trainer.load_chosen_model(config_train,config_train["modeltype"]).to(device)
         # load weights from checkpoint
-        train_results=torch.load(os.path.join(checkpointpath),map_location=device)
+        train_results=torch.load(os.path.join(checkpointpath),map_location=device, weights_only=True)
         model.load_state_dict(train_results["model_state_dict"])
         self.reverb_encoder=model.conditioning_network
 
