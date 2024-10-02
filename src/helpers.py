@@ -401,13 +401,15 @@ def plot_2_waveforms(audio1, audio2, fs):
 
 
 def plot_2_spectrograms(audio1, audio2, fs):
+    import numpy as np
+    import matplotlib.pyplot as plt
     from scipy.signal import stft
 
     plt.rcParams.update({'font.size': 6})
 
     # Compute STFT for both audio signals
-    f1, t1, Zxx1 = stft(audio1, fs=fs, nperseg=1024, noverlap=256)
-    f2, t2, Zxx2 = stft(audio2, fs=fs, nperseg=1024, noverlap=256)
+    f1, t1, Zxx1 = stft(audio1, fs=fs, nperseg=512, noverlap=256)
+    f2, t2, Zxx2 = stft(audio2, fs=fs, nperseg=512, noverlap=256)
 
     # Limit the frequency to 10 kHz
     freq_limit = 10000
@@ -424,8 +426,11 @@ def plot_2_spectrograms(audio1, audio2, fs):
     Zxx1_dB = 20 * np.log10(np.abs(Zxx1_limited) + 1e-10)
     Zxx2_dB = 20 * np.log10(np.abs(Zxx2_limited) + 1e-10)
 
-    # Create subplots for the two spectrograms
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 2))
+    # Compute SNR mask in dB
+    snr_mask_dB = Zxx1_dB - Zxx2_dB
+
+    # Create subplots for the two spectrograms and the SNR mask
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 3))
 
     # Plot spectrogram for audio1
     pcm1 = ax1.pcolormesh(t1, f1_limited, Zxx1_dB, shading='gouraud', cmap='inferno')
@@ -440,6 +445,13 @@ def plot_2_spectrograms(audio1, audio2, fs):
     ax2.set_xlabel('Time [s]')
     ax2.set_ylabel('Frequency [Hz]')
     fig.colorbar(pcm2, ax=ax2, format="%+2.0f dB")
+
+    # Plot SNR mask
+    pcm3 = ax3.pcolormesh(t1, f1_limited, snr_mask_dB, shading='gouraud', cmap='viridis')
+    ax3.set_title('SNR Mask (dB)')
+    ax3.set_xlabel('Time [s]')
+    ax3.set_ylabel('Frequency [Hz]')
+    fig.colorbar(pcm3, ax=ax3, format="%+2.0f dB")
 
     # Show the plot
     plt.tight_layout()

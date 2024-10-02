@@ -7,6 +7,8 @@ import pandas as pd
 import json
 from datetime import datetime
 import scipy.signal as signal
+from os.path import dirname, basename, join
+
 
 
 class DatasetReverbTransfer(Dataset):
@@ -103,6 +105,22 @@ class DatasetReverbTransfer(Dataset):
         selected=selected.iloc[::2]
         selected=selected["pair_idx"].tolist()
         return selected
+    
+    def get_target_clone(self,index, sAnecho):
+        # get the target signal with a cloned RIR (same room, but different position)
+        df_info=self.get_info(index,id="style")
+        original_rir_path=df_info["ir_file_path"]
+        dir_name = dirname(original_rir_path)
+        file_name = basename(original_rir_path)
+        clone_file_name = "clone_" + file_name
+        # cloned impulse response
+        rir_clone = hlp.torch_load_mono(join(dir_name,clone_file_name),self.fs)
+        sTargetClone = torch.from_numpy(signal.fftconvolve(sAnecho.numpy(), rir_clone,mode="full"))[:,:self.sig_len]
+        # Synchronize to anechoic signal
+        _,sTargetClone,_ = hlp.synch_sig2(sAnecho,sTargetClone)
+        sTargetClone=hlp.torch_normalize_max_abs(sTargetClone)
+
+        return sTargetClone
     
 
     def get_info(self,index,id="style"):
