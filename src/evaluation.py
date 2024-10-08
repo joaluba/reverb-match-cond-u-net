@@ -84,8 +84,8 @@ class Evaluator(torch.nn.Module):
         torch.manual_seed(0)
 
         # get speech reference for non-intrusive metrics:
-        speechref = hlp.torch_load_mono("../sounds/speech_VCTK_4_sentences.wav",self.fs)
-
+        speechref = hlp.torch_load_mono("/home/ubuntu/joanna/reverb-match-cond-u-net/sounds/speech_VCTK_4_sentences.wav",48000)[:,:4*48000].unsqueeze(1)
+        
         eval_dict_list=[]
         for j, data in tqdm(enumerate(self.testloader),total = len(self.testloader)):
             # get datapoint 
@@ -112,7 +112,7 @@ class Evaluator(torch.nn.Module):
         torch.manual_seed(0)
 
         # get speech reference for non-intrusive metrics:
-        speechref = hlp.torch_load_mono("../sounds/speech_VCTK_4_sentences.wav",self.fs)
+        speechref = hlp.torch_load_mono("/home/ubuntu/joanna/reverb-match-cond-u-net/sounds/speech_VCTK_4_sentences.wav",48000)[:,:4*48000].unsqueeze(1)
 
         # load training configuration
         device=self.config["device"]
@@ -133,7 +133,7 @@ class Evaluator(torch.nn.Module):
                 sPrediction, mu, log_var = sPrediction
             # get metrics
             # -> predicion : target
-            eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:target", sPrediction, sTarget, sAnecho, sContent, nmref=speechref))
+            eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:target", sPrediction, sTarget, sAnecho, nmref=speechref))
             # -> predicion : content
             eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:content",sPrediction, sContent, sAnecho,nmref=speechref))
             # # -> predicion : style
@@ -152,7 +152,7 @@ class Evaluator(torch.nn.Module):
         torch.manual_seed(0)
 
         # get speech reference for non-intrusive metrics:
-        speechref = hlp.torch_load_mono("../sounds/speech_VCTK_4_sentences.wav",self.fs)
+        speechref = hlp.torch_load_mono("/home/ubuntu/joanna/reverb-match-cond-u-net/sounds/speech_VCTK_4_sentences.wav",48000)[:,:4*48000].unsqueeze(1)
 
         eval_dict_list=[]
         for j, data in tqdm(enumerate(self.testloader),total = len(self.testloader)):
@@ -238,8 +238,6 @@ class Evaluator(torch.nn.Module):
         # L_srmr_x2=self.measures["srmr"](x2)
 
         # ----- Compute metrics from urgent -----
-        L_mcd_x1=mcd_metric(x_anecho.squeeze(0).cpu().numpy(),x1.squeeze(0).cpu().numpy(),16000,eps=1.0e-08)
-        L_mcd_x2=mcd_metric(x_anecho.squeeze(0).cpu().numpy(),x2.squeeze(0).cpu().numpy(),16000,eps=1.0e-08)
 
         L_mcd_ab=mcd_metric(x1.squeeze(0).cpu().numpy(),x2.squeeze(0).cpu().numpy(), 16000, eps=1.0e-08)
         L_mcd_ba=mcd_metric(x2.squeeze(0).cpu().numpy(),x1.squeeze(0).cpu().numpy(), 16000, eps=1.0e-08)
@@ -248,20 +246,12 @@ class Evaluator(torch.nn.Module):
         L_lsd_ba=lsd_metric(x2.squeeze(0).cpu().numpy(),x1.squeeze(0).cpu().numpy(), 16000, nfft=0.032, hop=0.016, p=2, eps=1.0e-08)
 
         # ----- Compute metrics from spear -----
-        L_fwsnr_x1=fwSNRseg(x_anecho.squeeze(0).cpu().numpy(),x1.squeeze(0).cpu().numpy(),16000)
-        L_fwsnr_x2=fwSNRseg(x_anecho.squeeze(0).cpu().numpy(),x2.squeeze(0).cpu().numpy(),16000)
-
         L_fwsnr_ab=fwSNRseg(x1.squeeze(0).cpu().numpy(),x2.squeeze(0).cpu().numpy(),16000)
         L_fwsnr_ba=fwSNRseg(x2.squeeze(0).cpu().numpy(),x1.squeeze(0).cpu().numpy(),16000)
 
-        # L_bsd_x1=bsd(x_anecho.squeeze(0).cpu().numpy(),x1.squeeze(0).cpu().numpy(),16000)
-        # L_bsd_x2=bsd(x_anecho.squeeze(0).cpu().numpy(),x2.squeeze(0).cpu().numpy(),16000)
-        
-        # L_wss_x1=wss(x_anecho.squeeze(0).cpu().numpy(),x1.squeeze(0).cpu().numpy(),16000)
-        # L_wss_x2=wss(x_anecho.squeeze(0).cpu().numpy(),x2.squeeze(0).cpu().numpy(),16000)
-
         L_multi_stft_ab=self.measures["multi-stft"](x1,x2)[0].item() + self.measures["multi-stft"](x1,x2)[1].item()
         L_multi_stft_ba=self.measures["multi-stft"](x2,x1)[0].item() + self.measures["multi-stft"](x2,x1)[1].item()
+
         L_stft_ab=self.measures["stft"](x1,x2)[0].item() + self.measures["stft"](x1,x2)[1].item()
         L_stft_ba=self.measures["stft"](x2,x1)[0].item() + self.measures["stft"](x2,x1)[1].item()
 
@@ -273,7 +263,6 @@ class Evaluator(torch.nn.Module):
         # Type 1: similarity measured using symmetric metric
         # M = m(a,b) = m(b,a)
         '1L_multi-stft-mag': self.measures["multi-stft"](x1,x2)[1].item(), 
-        '1L_stft': self.measures["stft"](x1,x2)[0].item(),
         '1L_stft-mag': self.measures["stft"](x1,x2)[1].item(),
         '1L_multi-wave': self.measures["multi-wave"](x1,x2).item(),
         '1L_wave': self.measures["wave"](x1,x2).item(),
@@ -293,8 +282,7 @@ class Evaluator(torch.nn.Module):
         '2S_pesq': ((L_pesq_ab+L_pesq_ba)/2).item(),
         '2S_stoi': ((L_stoi_ab+L_stoi_ba)/2).item(),
 
-
-        # Type 2: similarity measured as distance in intrusive metric
+        # Type 3: similarity measured as distance in intrusive metric
         # M = abs(m(a,ref) - m(b,ref))
         '3D_pesq': torch.mean(torch.abs(L_pesq_x1-L_pesq_x2)).item(), 
         '3D_stoi': torch.mean(torch.abs(L_stoi_x1-L_stoi_x2)).item(),
@@ -342,10 +330,10 @@ class Evaluator(torch.nn.Module):
                 sContent=hlp.torch_load_mono(filenames[3],fs)
                 sStyle=hlp.torch_load_mono(filenames[4],fs)
                 
-            sigs.append(sContent.cpu())
             sigs.append(sAnecho.cpu())
             sigs.append(sTarget.cpu())
             sigs.append(sTargetClone.cpu())
+            sigs.append(sContent.cpu())
             sigs.append(sStyle.cpu())
 
         elif checkpointpath=="baselines":
@@ -398,7 +386,7 @@ class Evaluator(torch.nn.Module):
         return  sigs, filenames
 
 
-def eval_experiment(config):
+def eval_experiment(config,checkpoints_list=None):
 
     eval_dict_list=[]
     eval_dir=config["eval_dir"]
@@ -428,18 +416,29 @@ def eval_experiment(config):
     print(f"Computing metrics -> models ")
     # a loop over all conditions of the considered experiment 
     # each condition contains a checkpoint for a different model version
-    for subdir in os.listdir(eval_dir):
-        exp_subdir = os.path.join(eval_dir, subdir)
-        if os.path.isdir(exp_subdir):
-            print(f"...using training results {exp_subdir}")
-            # specify training params file
-            tmp_config_train=hlp.load_config(pjoin(exp_subdir,"train_config.yaml"))
-            # checkpoint file path
-            tmp_checkpointpath=pjoin(exp_subdir,"checkpointbest.pt")
+    if checkpoints_list==None:
+  
+        for subdir in os.listdir(eval_dir):
+            exp_subdir = os.path.join(eval_dir, subdir)
+            if os.path.isdir(exp_subdir):
+                print(f"...using training results {exp_subdir}")
+                # checkpoint file path
+                tmp_checkpointpath=pjoin(exp_subdir,"checkpointbest.pt")
+                # name of this experiment condition
+                tmp_eval_tag=pjoin(exp_subdir).split('/')[-1]
+                # compute metrics for this model version
+                tmp_dict_eval=myeval.compute_metrics_checkpoint(tmp_checkpointpath,tmp_eval_tag)
+                # add the metrics to the main list containing all eval results
+                eval_dict_list.extend(tmp_dict_eval)
+                # list -> df and save 
+                pd.DataFrame(eval_dict_list).to_csv(eval_dir+eval_file_name, index=False)
+    else: 
+        for checkpoint in checkpoints_list:
+            print(f"...using training results {checkpoint}")
             # name of this experiment condition
-            tmp_eval_tag=pjoin(exp_subdir).split('/')[-1]
+            tmp_eval_tag=checkpoint.split('/')[-2] + "_" + os.path.basename(checkpoint).split(".")[0]
             # compute metrics for this model version
-            tmp_dict_eval=myeval.compute_metrics_checkpoint(tmp_checkpointpath,tmp_eval_tag)
+            tmp_dict_eval=myeval.compute_metrics_checkpoint(checkpoint,tmp_eval_tag)
             # add the metrics to the main list containing all eval results
             eval_dict_list.extend(tmp_dict_eval)
             # list -> df and save 
@@ -448,33 +447,26 @@ def eval_experiment(config):
 
 if __name__ == "__main__":
 
+    # make a list of checkpoints to compare (in addition to ground truth sounds and baselines)
+    checkpoint_paths=[
+                    "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/10-06-2024--15-02_c_wunet_stft+wave_0.8_0.2/checkpointbest.pt",
+                    "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/20-05-2024--22-48_c_wunet_logmel+wave_0.8_0.2/checkpointbest.pt",
+                    "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/29-05-2024--05-47_c_wunet_logmel_1/checkpointbest.pt",
+                    "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/18-06-2024--18-37_c_wunet_stft_1/checkpointbest.pt",
+                    "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/18-06-2024--18-37_c_wunet_stft_1/checkpoint50.pt",
+                    "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/18-06-2024--18-37_c_wunet_stft_1/checkpoint10.pt",
+                    "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/18-06-2024--18-37_c_wunet_stft_1/checkpoint0.pt"
+                    ]
+
+    # load default config
     config=hlp.load_config(pjoin("/home/ubuntu/joanna/reverb-match-cond-u-net/config/basic.yaml"))
-    
-    myeval = Evaluator(config)
 
-    my_best_checkpoint_path="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/10-06-2024--15-02_c_wunet_stft+wave_0.8_0.2/checkpointbest.pt"
+    # set parameters for this experiment
+    config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
+    config["eval_file_name"] = "100924_compare_percept.csv"
+    config["rt60diffmin"] = -3
+    config["rt60diffmax"] = 3
+    config["N_datapoints"] = 5 # if 0 - whole test set included
+    config["batch_size_eval"] = 1
 
-    audios=myeval.compare_audios_checkpoint(my_best_checkpoint_path,0)
-
-
-    # config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
-    # config["N_datapoints"] = 10 # if 0 - whole test set included
-
-    # config["eval_file_name"] = "eval_dereverb.csv"
-    # config["rt60diffmin"] = -2
-    # config["rt60diffmax"] = -0.2
-    # eval_experiment(config)
-
-    # # Compute for difficult de-reverberation
-    # config["savedir_sounds"]="/home/ubuntu/joanna/reverb-match-cond-u-net/sounds/rereverb/"
-    # config["eval_file_name"] = "eval_rereverb.csv"
-    # config["rt60diffmin"] = 0.2
-    # config["rt60diffmax"] = 2
-    # eval_experiment(config)
-
-    # # Compute for all examples
-    # config["savedir_sounds"]="/home/ubuntu/joanna/reverb-match-cond-u-net/sounds/all_batches/"
-    # config["eval_file_name"] = "eval_all_batches.csv"
-    # config["rt60diffmin"] = -3
-    # config["rt60diffmax"] = 3
-    # eval_experiment(config)
+    eval_experiment(config,checkpoints_list=checkpoint_paths)
