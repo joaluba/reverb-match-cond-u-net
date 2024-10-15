@@ -65,7 +65,7 @@ class Evaluator(torch.nn.Module):
         batch_size_eval = self.config["batch_size_eval"]
 
         # load a test split from the dataset used for training
-        self.config["split"] = "test" 
+        self.config["split"] = self.config["eval_split"]
         self.config["p_noise"] = 0 # for evaluation, we do not want noise 
         self.testset_orig = dataset.DatasetReverbTransfer(self.config)
         # choose a subset of the original test split
@@ -93,13 +93,13 @@ class Evaluator(torch.nn.Module):
             sTargetClone=self.testset_orig.get_target_clone(j,sAnecho)
             # get metrics
             # -> content : target 
-            eval_dict_list.append(self.metrics4batch(j,"oracle","content:target",sContent,sTarget,sAnecho,nmref=speechref))
+            eval_dict_list.append(self.metrics4batch(j,"oracle","target:content",sTarget,sContent,sAnecho,nmref=speechref))
             # -> content : anechoic
-            eval_dict_list.append(self.metrics4batch(j,"oracle","content:anecho",sContent,sAnecho,sAnecho, nmref=speechref))
+            eval_dict_list.append(self.metrics4batch(j,"oracle","target:anecho",sTarget,sAnecho,sAnecho, nmref=speechref))
             # -> content : style
-            eval_dict_list.append(self.metrics4batch(j,"oracle","content:style",sContent,sStyle,sAnecho, nmref=speechref))
+            eval_dict_list.append(self.metrics4batch(j,"oracle","target:style",sTarget,sStyle,sAnecho, nmref=speechref))
             # -> targetclone : target
-            eval_dict_list.append(self.metrics4batch(j,"oracle","targetclone:target",sTargetClone,sTarget,sAnecho, nmref=speechref))
+            eval_dict_list.append(self.metrics4batch(j,"oracle","target:targetclone",sTarget,sTargetClone,sAnecho, nmref=speechref))
             # # -> r(content) : r(target) 
             # eval_dict_list.append(self.metrics4batch(j,"oracle","r(content):r(target)",sContent-sAnecho,sTarget-sAnecho, sAnecho, nmref=speechref))
 
@@ -135,7 +135,7 @@ class Evaluator(torch.nn.Module):
             # -> predicion : target
             eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:target", sPrediction, sTarget, sAnecho, nmref=speechref))
             # -> predicion : content
-            eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:content",sPrediction, sContent, sAnecho,nmref=speechref))
+            # eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:content",sPrediction, sContent, sAnecho,nmref=speechref))
             # # -> predicion : style
             # eval_dict_list.append(self.metrics4batch(j,eval_tag,"r(prediction):r(style)",sPrediction,sStyle,sAnecho,nmref=speechref))
             # # -> reverb(predicion) : reverb(target)
@@ -163,8 +163,8 @@ class Evaluator(torch.nn.Module):
             # get metrics
             # -> predicion : target
             eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:target",sPrediction,sTarget,sAnecho,nmref=speechref))
-            # -> predicion : content
-            eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:content",sPrediction,sContent,sAnecho,nmref=speechref))
+            # # -> predicion : content
+            # eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:content",sPrediction,sContent,sAnecho,nmref=speechref))
             # # -> predicion : style
             # eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:style",sPrediction,sStyle,sAnecho,nmref=speechref))
             # # -> r(predicion) : r(target)
@@ -190,8 +190,10 @@ class Evaluator(torch.nn.Module):
         nmref=hlp.torch_resample_if_needed(nmref,48000,16000).to(device)
 
         # ----- Compute perceptual losses -----
-        L_pesq_x1=torch.tensor([float('nan')])
-        L_pesq_x2=torch.tensor([float('nan')])
+        L_pesq_x1=torch.tensor([float('nan')]).to(device)
+        L_pesq_x2=torch.tensor([float('nan')]).to(device)
+        L_pesq_ab=torch.tensor([float('nan')]).to(device)
+        L_pesq_ba=torch.tensor([float('nan')]).to(device)
         try:
             L_pesq_x1=self.measures["pesq"](x1,x_anecho)
             L_pesq_x2=self.measures["pesq"](x2,x_anecho)
@@ -201,10 +203,10 @@ class Evaluator(torch.nn.Module):
             self.failcount+=1
             print("Could not compute pesq for this signal for " + str(self.failcount) + "times")
 
-        L_stoi_x1=torch.tensor([float('nan')])
-        L_stoi_x2=torch.tensor([float('nan')])
-        L_stoi_ab=torch.tensor([float('nan')])
-        L_stoi_ba=torch.tensor([float('nan')])
+        L_stoi_x1=torch.tensor([float('nan')]).to(device)
+        L_stoi_x2=torch.tensor([float('nan')]).to(device)
+        L_stoi_ab=torch.tensor([float('nan')]).to(device)
+        L_stoi_ba=torch.tensor([float('nan')]).to(device)
         try:
             L_stoi_x1=self.measures["stoi"](x1,x_anecho)
             L_stoi_x2=self.measures["stoi"](x2,x_anecho)
@@ -214,8 +216,8 @@ class Evaluator(torch.nn.Module):
             self.failcount+=1
             print("Could not compute stoi for this signal for " + str(self.failcount) + "times")
 
-        L_sisdr_x1=torch.tensor([float('nan')])
-        L_sisdr_x2=torch.tensor([float('nan')])
+        L_sisdr_x1=torch.tensor([float('nan')]).to(device)
+        L_sisdr_x2=torch.tensor([float('nan')]).to(device)
         L_sisdr_x1=self.measures["sisdr"](x1,x_anecho)
         L_sisdr_x2=self.measures["sisdr"](x2,x_anecho)
 
@@ -226,16 +228,14 @@ class Evaluator(torch.nn.Module):
         except:
             print("Could not compute squim objective predictions")
 
-        L_mos_x1=torch.tensor([float('nan')])
-        L_mos_x2=torch.tensor([float('nan')])
+        L_mos_x1=torch.tensor([float('nan')]).to(device)
+        L_mos_x2=torch.tensor([float('nan')]).to(device)
         try:
             L_mos_x1=self.measures["squim_subj"](x1,nmref) 
             L_mos_x2=self.measures["squim_subj"](x2,nmref) 
         except:
             print("Could not compute squim subjective predictions")
 
-        # L_srmr_x1=self.measures["srmr"](x1)
-        # L_srmr_x2=self.measures["srmr"](x2)
 
         # ----- Compute metrics from urgent -----
 
@@ -249,11 +249,15 @@ class Evaluator(torch.nn.Module):
         L_fwsnr_ab=fwSNRseg(x1.squeeze(0).cpu().numpy(),x2.squeeze(0).cpu().numpy(),16000)
         L_fwsnr_ba=fwSNRseg(x2.squeeze(0).cpu().numpy(),x1.squeeze(0).cpu().numpy(),16000)
 
-        L_multi_stft_ab=self.measures["multi-stft"](x1,x2)[0].item() + self.measures["multi-stft"](x1,x2)[1].item()
-        L_multi_stft_ba=self.measures["multi-stft"](x2,x1)[0].item() + self.measures["multi-stft"](x2,x1)[1].item()
+        multi_mag_ab, multi_coh_ab= self.measures["multi-stft"](x1,x2)
+        multi_mag_ba, multi_coh_ba= self.measures["multi-stft"](x2,x1)
+        L_multi_stft_ab=multi_mag_ab.item() + multi_coh_ab.item()
+        L_multi_stft_ba=multi_mag_ba.item() + multi_coh_ba.item()
 
-        L_stft_ab=self.measures["stft"](x1,x2)[0].item() + self.measures["stft"](x1,x2)[1].item()
-        L_stft_ba=self.measures["stft"](x2,x1)[0].item() + self.measures["stft"](x2,x1)[1].item()
+        mag_ab, coh_ab= self.measures["stft"](x1,x2)
+        mag_ba, coh_ba= self.measures["stft"](x2,x1)
+        L_stft_ab=mag_ab.item() + coh_ab.item()
+        L_stft_ba=mag_ba.item() + coh_ba.item()
 
         # ----- Create a dictionary with loss values -----
         dict_row={ 
@@ -262,8 +266,8 @@ class Evaluator(torch.nn.Module):
         'compared': comp_name,
         # Type 1: similarity measured using symmetric metric
         # M = m(a,b) = m(b,a)
-        '1L_multi-stft-mag': self.measures["multi-stft"](x1,x2)[1].item(), 
-        '1L_stft-mag': self.measures["stft"](x1,x2)[1].item(),
+        '1L_multi-stft-mag': multi_mag_ab.item(), 
+        '1L_stft-mag': mag_ab.item(),
         '1L_multi-wave': self.measures["multi-wave"](x1,x2).item(),
         '1L_wave': self.measures["wave"](x1,x2).item(),
         '1L_logmel': self.measures["logmel"](x1,x2).item(),
@@ -463,10 +467,11 @@ if __name__ == "__main__":
 
     # set parameters for this experiment
     config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
-    config["eval_file_name"] = "100924_compare_percept.csv"
+    config["eval_file_name"] = "100924_compare_percept_5000valset.csv"
     config["rt60diffmin"] = -3
     config["rt60diffmax"] = 3
-    config["N_datapoints"] = 5 # if 0 - whole test set included
+    config["N_datapoints"] = 5000 # if 0 - whole test set included 
     config["batch_size_eval"] = 1
+    config["eval_split"] = "val"
 
     eval_experiment(config,checkpoints_list=checkpoint_paths)
