@@ -93,15 +93,18 @@ class Evaluator(torch.nn.Module):
             sTargetClone=self.testset_orig.get_target_clone(j,sAnecho)
             # get metrics
             # -> content : target 
-            eval_dict_list.append(self.metrics4batch(j,"oracle","target:content",sTarget,sContent,sAnecho,nmref=speechref))
+            # eval_dict_list.append(self.metrics4batch(j,"oracle","target:content",sTarget,sContent,sAnecho,nmref=speechref))
             # -> content : anechoic
-            eval_dict_list.append(self.metrics4batch(j,"oracle","target:anecho",sTarget,sAnecho,sAnecho, nmref=speechref))
+            # eval_dict_list.append(self.metrics4batch(j,"oracle","target:anecho",sTarget,sAnecho,sAnecho, nmref=speechref))
             # -> content : style
-            eval_dict_list.append(self.metrics4batch(j,"oracle","target:style",sTarget,sStyle,sAnecho, nmref=speechref))
+            # eval_dict_list.append(self.metrics4batch(j,"oracle","target:style",sTarget,sStyle,sAnecho, nmref=speechref))
             # -> targetclone : target
-            eval_dict_list.append(self.metrics4batch(j,"oracle","target:targetclone",sTarget,sTargetClone,sAnecho, nmref=speechref))
+            # eval_dict_list.append(self.metrics4batch(j,"oracle","target:targetclone",sTarget,sTargetClone,sAnecho, nmref=speechref))
             # # -> r(content) : r(target) 
-            # eval_dict_list.append(self.metrics4batch(j,"oracle","r(content):r(target)",sContent-sAnecho,sTarget-sAnecho, sAnecho, nmref=speechref))
+            eval_dict_list.append(self.metrics4batch(j,"oracle","r(content):r(target)",sContent-sAnecho,sTarget-sAnecho, sAnecho, nmref=speechref))
+            # # -> r(targetclone) : r(target) 
+            eval_dict_list.append(self.metrics4batch(j,"oracle","r(target):r(targetclone)",sTarget-sAnecho,sTargetClone-sAnecho,sAnecho, nmref=speechref))
+
 
         return eval_dict_list
     
@@ -131,17 +134,18 @@ class Evaluator(torch.nn.Module):
             _, _, _, sPrediction=trainer.infer(model, data, device)
             if bool(config_train["is_vae"]):      
                 sPrediction, mu, log_var = sPrediction
+
             # get metrics
             # -> predicion : target
-            eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:target", sPrediction, sTarget, sAnecho, nmref=speechref))
+            # eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:target", sPrediction, sTarget, sAnecho, nmref=speechref))
             # -> predicion : content
             # eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:content",sPrediction, sContent, sAnecho,nmref=speechref))
             # # -> predicion : style
             # eval_dict_list.append(self.metrics4batch(j,eval_tag,"r(prediction):r(style)",sPrediction,sStyle,sAnecho,nmref=speechref))
             # # -> reverb(predicion) : reverb(target)
-            # eval_dict_list.append(self.metrics4batch(j,eval_tag,"r(prediction):r(target)",sPrediction-sAnecho,sTarget-sAnecho,sAnecho,nmref=speechref))
+            eval_dict_list.append(self.metrics4batch(j,eval_tag,"r(prediction):r(target)",sPrediction-sAnecho.to(device),sTarget-sAnecho,sAnecho,nmref=speechref))
             # # -> reverb(predicion) : reverb(content)
-            # eval_dict_list.append(self.metrics4batch(j,eval_tag,"r(prediction):r(content)",sPrediction-sAnecho,sContent-sAnecho,sAnecho,nmref=speechref))
+            eval_dict_list.append(self.metrics4batch(j,eval_tag,"r(prediction):r(content)",sPrediction-sAnecho.to(device),sContent-sAnecho,sAnecho,nmref=speechref))
 
         return eval_dict_list
     
@@ -153,7 +157,8 @@ class Evaluator(torch.nn.Module):
 
         # get speech reference for non-intrusive metrics:
         speechref = hlp.torch_load_mono("/home/ubuntu/joanna/reverb-match-cond-u-net/sounds/speech_VCTK_4_sentences.wav",48000)[:,:4*48000].unsqueeze(1)
-
+        device=self.config["device"]
+        
         eval_dict_list=[]
         for j, data in tqdm(enumerate(self.testloader),total = len(self.testloader)):
             # get datapoint 
@@ -162,15 +167,15 @@ class Evaluator(torch.nn.Module):
             _, _, _, sPrediction=self.baselines.infer_baseline(data,baseline)
             # get metrics
             # -> predicion : target
-            eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:target",sPrediction,sTarget,sAnecho,nmref=speechref))
+            # eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:target",sPrediction,sTarget,sAnecho,nmref=speechref))
             # # -> predicion : content
             # eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:content",sPrediction,sContent,sAnecho,nmref=speechref))
             # # -> predicion : style
             # eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:style",sPrediction,sStyle,sAnecho,nmref=speechref))
             # # -> r(predicion) : r(target)
-            # eval_dict_list.append(self.metrics4batch(j,baseline,"r(prediction):r(target)",sPrediction-sAnecho,sTarget-sAnecho,sAnecho,nmref=speechref))
+            eval_dict_list.append(self.metrics4batch(j,baseline,"r(prediction):r(target)",sPrediction-sAnecho.to(device),sTarget-sAnecho,sAnecho,nmref=speechref))
             # # -> r(predicion) : r(content)
-            # eval_dict_list.append(self.metrics4batch(j,baseline,"r(prediction):r(content)",sPrediction-sAnecho,sContent-sAnecho,sAnecho,nmref=speechref))
+            eval_dict_list.append(self.metrics4batch(j,baseline,"r(prediction):r(content)",sPrediction-sAnecho.to(device),sContent-sAnecho,sAnecho,nmref=speechref))
 
         return eval_dict_list
     
@@ -299,6 +304,127 @@ class Evaluator(torch.nn.Module):
         }
         
         return dict_row
+    
+    def save_audios_sample_ext(self,checkpointpath,idx,savedir,savefiles=True):
+                        
+        
+
+        filenames={}
+        sigs={}
+
+        fs=self.testset_orig.fs
+
+        if savefiles==True:
+            hlp.init_random_seeds(0)
+            sigs_gt, rirs = self.testset_orig.get_item_test(46,truncate_rirs=True)
+            hlp.init_random_seeds(0)
+            data=self.testset_orig[idx]
+            sContent, sStyle, sTarget, sAnecho, sStyle_anecho = data
+
+        if checkpointpath=="groundtruth":
+            
+            filenames["sAnecho"] = pjoin(savedir, "testset_idx" + str(idx) + '--sAnecho.wav')
+            filenames["sTarget"] = pjoin(savedir, "testset_idx" + str(idx) + '--sTarget.wav')
+            filenames["sTarget_early"] = pjoin(savedir, "testset_idx" + str(idx) + '--sTarget_early.wav')
+            filenames["sTarget_late"] = pjoin(savedir, "testset_idx" + str(idx) + '--sTarget_late.wav')
+            filenames["sTargetClone"] = pjoin(savedir, "testset_idx" + str(idx) + '--sTargetClone.wav')
+            filenames["sTargetClone_early"] = pjoin(savedir, "testset_idx" + str(idx) + '--sTargetClone_early.wav')
+            filenames["sTargetClone_late"] = pjoin(savedir, "testset_idx" + str(idx) + '--sTargetClone_late.wav')
+            filenames["sContent"] = pjoin(savedir, "testset_idx" + str(idx) + '--sContent.wav')
+            filenames["sContent_early"] = pjoin(savedir, "testset_idx" + str(idx) + '--sContent_early.wav')
+            filenames["sContent_late"] = pjoin(savedir, "testset_idx" + str(idx) + '--sContent_late.wav')
+            filenames["sStyle"] = pjoin(savedir, "testset_idx" + str(idx) + '--sStyle.wav')
+            filenames["sStyleFlipped"] = pjoin(savedir, "testset_idx" + str(idx) + '--sStyleFlipped.wav')
+
+            if savefiles==False:
+                print("loading ground truth signals from file")
+                sigs["sAnecho"] = hlp.torch_load_mono(filenames["sAnecho"], fs)
+                sigs["sTarget"] = hlp.torch_load_mono(filenames["sTarget"], fs)
+                sigs["sTarget_early"] = hlp.torch_load_mono(filenames["sTarget_early"], fs)
+                sigs["sTarget_late"] = hlp.torch_load_mono(filenames["sTarget_late"], fs)
+                sigs["sTargetClone"] = hlp.torch_load_mono(filenames["sTargetClone"], fs)
+                sigs["sTargetClone_early"] = hlp.torch_load_mono(filenames["sTargetClone_early"], fs)
+                sigs["sTargetClone_late"] = hlp.torch_load_mono(filenames["sTargetClone_late"], fs)
+                sigs["sContent"] = hlp.torch_load_mono(filenames["sContent"], fs)
+                sigs["sContent_early"] = hlp.torch_load_mono(filenames["sContent_early"], fs)
+                sigs["sContent_late"] = hlp.torch_load_mono(filenames["sContent_late"], fs)
+                sigs["sStyle"] = hlp.torch_load_mono(filenames["sStyle"], fs)
+                sigs["sStyleFlipped"] = hlp.torch_load_mono(filenames["sStyleFlipped"], fs)
+            else:
+                print("getting ground truth signals")
+                sigs=sigs_gt
+            
+        elif checkpointpath=="baselines":
+
+            filenames["sPred_anecho_fins"] = pjoin(savedir, "testset_idx" + str(idx) + '--sPred_anecho_fins.wav')
+            filenames["sPred_anecho_fins_early"] = pjoin(savedir, "testset_idx" + str(idx) + '--sPred_anecho_fins_early.wav')
+            filenames["sPred_anecho_fins_late"] = pjoin(savedir, "testset_idx" + str(idx) + '--sPred_anecho_fins_late.wav')
+
+            filenames["sPred_dfnet_fins"] = pjoin(savedir, "testset_idx" + str(idx) + '--sPred_dfnet_fins.wav')
+            filenames["sPred_dfnet_fins_early"] = pjoin(savedir, "testset_idx" + str(idx) + '--sPred_dfnet_fins_early.wav')
+            filenames["sPred_dfnet_fins_late"] = pjoin(savedir, "testset_idx" + str(idx) + '--sPred_dfnet_fins_late.wav')
+
+            filenames["sPred_wpe_fins"] = pjoin(savedir, "testset_idx" + str(idx) + '--sPred_wpe_fins.wav')
+            filenames["sPred_wpe_fins_early"] = pjoin(savedir, "testset_idx" + str(idx) + '--sPred_wpe_fins_early.wav')
+            filenames["sPred_wpe_fins_late"] = pjoin(savedir, "testset_idx" + str(idx) + '--sPred_wpe_fins_late.wav')
+            
+            if savefiles==True:
+                print("getting baseline signals")
+                hlp.init_random_seeds(0)
+                sigs["sPred_anecho_fins"]=self.baselines.infer_baseline(data,"anecho+fins")[3].cpu().squeeze(1)
+                sigs["sPred_anecho_fins_early"]=sigs["sPred_anecho_fins"]-sigs_gt["sTarget_late"]
+                sigs["sPred_anecho_fins_late"]=sigs["sPred_anecho_fins"]-sigs_gt["sTarget_early"]
+                sigs["sPred_dfnet_fins"]=self.baselines.infer_baseline(data,"dfnet+fins")[3].cpu().squeeze(1)
+                sigs["sPred_dfnet_fins_early"]=sigs["sPred_dfnet_fins"]-sigs_gt["sTarget_late"]
+                sigs["sPred_dfnet_fins_late"]=sigs["sPred_dfnet_fins"]-sigs_gt["sTarget_early"]
+                sigs["sPred_wpe_fins"]=self.baselines.infer_baseline(data,"wpe+fins")[3].cpu().squeeze(1)
+                sigs["sPred_wpe_fins_early"]=sigs["sPred_wpe_fins"]-sigs_gt["sTarget_late"]
+                sigs["sPred_wpe_fins_late"]=sigs["sPred_wpe_fins"]-sigs_gt["sTarget_early"]
+            else: 
+                print("loading baseline signals from file")
+                sigs["sPred_anecho_fins"] = hlp.torch_load_mono(filenames["sPred_anecho_fins"], fs)
+                sigs["sPred_anecho_fins_early"] = hlp.torch_load_mono(filenames["sPred_anecho_fins_early"], fs)
+                sigs["sPred_anecho_fins_late"] = hlp.torch_load_mono(filenames["sPred_anecho_fins_late"], fs)
+
+                sigs["sPred_dfnet_fins"] = hlp.torch_load_mono(filenames["sPred_dfnet_fins"], fs)
+                sigs["sPred_dfnet_fins_early"] = hlp.torch_load_mono(filenames["sPred_dfnet_fins_early"], fs)
+                sigs["sPred_dfnet_fins_late"] = hlp.torch_load_mono(filenames["sPred_dfnet_fins_late"], fs)
+
+                sigs["sPred_wpe_fins"] = hlp.torch_load_mono(filenames["sPred_wpe_fins"], fs)
+                sigs["sPred_wpe_fins_early"] = hlp.torch_load_mono(filenames["sPred_wpe_fins_early"], fs)
+                sigs["sPred_wpe_fins_late"] = hlp.torch_load_mono(filenames["sPred_wpe_fins_late"], fs)
+
+        else: 
+            model_tag=checkpointpath.split('/')[-2] + "_" + os.path.basename(checkpointpath).split(".")[0]
+
+            filenames[model_tag + "sPred_model"] = pjoin(savedir,"testset_idx" + str(idx) + "--" + model_tag + '_sPred_model.wav')
+            filenames[model_tag + "sPred_model_early"] = pjoin(savedir,"testset_idx" + str(idx) + "--" + model_tag + '_sPred_model_early.wav')
+            filenames[model_tag + "sPred_model_late"] = pjoin(savedir,"testset_idx" + str(idx) + "--" + model_tag + '_sPred_model_late.wav')
+
+            if savefiles==True:
+                print("getting checkpoint signals")
+                # load training configuration
+                device=self.config["device"]
+                config_train=hlp.load_config(pjoin(os.path.dirname(checkpointpath),"train_config.yaml"))
+                # load model architecture
+                model=trainer.load_chosen_model(config_train,config_train["modeltype"]).to(device)
+                # load weights from checkpoint
+                train_results=torch.load(os.path.join(checkpointpath),map_location=device,weights_only=True)
+                model.load_state_dict(train_results["model_state_dict"])
+                sigs[model_tag + "sPred_model"] =trainer.infer(model, data, device)[3].cpu().squeeze(1)
+                sigs[model_tag + "sPred_model_early"] = sigs[model_tag + "sPred_model"] - sigs_gt["sTarget_late"]
+                sigs[model_tag + "sPred_model_late"] = sigs[model_tag + "sPred_model"] - sigs_gt["sTarget_early"]
+
+            else:
+                print("loading checkpoint signals from file")
+                sigs[model_tag + "sPred_model"] = hlp.torch_load_mono(filenames[model_tag + "sPred_model"], fs)
+                sigs[model_tag + "sPred_model_early"] = hlp.torch_load_mono(filenames[model_tag + "sPred_model_early"], fs)
+                sigs[model_tag + "sPred_model_late"] = hlp.torch_load_mono(filenames[model_tag + "sPred_model_late"], fs)
+
+        if savefiles==True:
+            [audiosave(filenames[key], sigs[key], 48000) for key in sigs.keys()]
+
+        return  sigs, filenames
         
     def save_audios_sample(self,checkpointpath,idx,savedir,savefiles=True):
                         
@@ -325,7 +451,7 @@ class Evaluator(torch.nn.Module):
 
             if savefiles==True:
                 print("getting ground truth signals")
-                sTargetClone=self.testset_orig.get_target_clone(idx,sAnecho)
+                sTargetClone=self.testset_orig.get_target_clone(idx,sAnecho).squeeze(0)
             else:
                 print("loading ground truth signals from file")
                 sAnecho=hlp.torch_load_mono(filenames[0],fs)
@@ -339,7 +465,8 @@ class Evaluator(torch.nn.Module):
             sigs.append(sTargetClone.cpu())
             sigs.append(sContent.cpu())
             sigs.append(sStyle.cpu())
-
+        
+            
         elif checkpointpath=="baselines":
 
             filenames.append(pjoin(savedir,"testset_idx" + str(idx) + '--sPred_anecho_fins.wav'))
@@ -467,11 +594,11 @@ if __name__ == "__main__":
 
     # set parameters for this experiment
     config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
-    config["eval_file_name"] = "100924_compare_percept_5000valset.csv"
+    config["eval_file_name"] = "151024_compare_percept_100testset_revpart.csv"
     config["rt60diffmin"] = -3
     config["rt60diffmax"] = 3
-    config["N_datapoints"] = 5000 # if 0 - whole test set included 
+    config["N_datapoints"] = 100 # if 0 - whole test set included 
     config["batch_size_eval"] = 1
-    config["eval_split"] = "val"
+    config["eval_split"] = "test"
 
     eval_experiment(config,checkpoints_list=checkpoint_paths)
