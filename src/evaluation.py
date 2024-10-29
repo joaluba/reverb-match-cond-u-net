@@ -77,6 +77,7 @@ class Evaluator(torch.nn.Module):
         self.testloader = torch.utils.data.DataLoader(self.testset, batch_size=batch_size_eval, shuffle=False, num_workers=6,pin_memory=True)
 
 
+
     def compute_metrics_oracle(self):
                 
         np.random.seed(0)
@@ -85,12 +86,15 @@ class Evaluator(torch.nn.Module):
 
         # get speech reference for non-intrusive metrics:
         speechref = hlp.torch_load_mono("/home/ubuntu/joanna/reverb-match-cond-u-net/sounds/speech_VCTK_4_sentences.wav",48000)[:,:4*48000].unsqueeze(1)
+        device=self.config["device"]
         
         eval_dict_list=[]
         for j, data in tqdm(enumerate(self.testloader),total = len(self.testloader)):
-            # get datapoint 
-            sContent, sStyle, sTarget, sAnecho, sStyle_anecho = data
-            sTargetClone=self.testset_orig.get_target_clone(j,sAnecho)
+
+            # get simple datapoint (can be used in batches)
+            # sContent, sStyle, sTarget, sAnecho, sStyle_anecho = data
+            # sTargetClone=self.testset_orig.get_target_clone(j,sAnecho)
+
             # get metrics
             # -> content : target 
             # eval_dict_list.append(self.metrics4batch(j,"oracle","target:content",sTarget,sContent,sAnecho,nmref=speechref))
@@ -100,10 +104,19 @@ class Evaluator(torch.nn.Module):
             # eval_dict_list.append(self.metrics4batch(j,"oracle","target:style",sTarget,sStyle,sAnecho, nmref=speechref))
             # -> targetclone : target
             # eval_dict_list.append(self.metrics4batch(j,"oracle","target:targetclone",sTarget,sTargetClone,sAnecho, nmref=speechref))
+
+            # get extended datapoint (one at the time)
+            sigs_gt, _ = self.testset_orig.get_item_test(j,truncate_rirs=True)
+            # move all signals to device
+            sigs_gt = {key: value.to(device) for key, value in sigs_gt.items()}
+            # -> content : target 
+            eval_dict_list.append(self.metrics4batch(j,"oracle","tar:content",sigs_gt["sTarget"],sigs_gt["sContent"],sigs_gt["sAnecho"],nmref=speechref))
+            # -> targetclone : target
+            eval_dict_list.append(self.metrics4batch(j,"oracle","tar:tarclone",sigs_gt["sTarget"],sigs_gt["sTargetClone"],sigs_gt["sAnecho"], nmref=speechref))
             # # -> r(content) : r(target) 
-            eval_dict_list.append(self.metrics4batch(j,"oracle","r(content):r(target)",sContent-sAnecho,sTarget-sAnecho, sAnecho, nmref=speechref))
+            eval_dict_list.append(self.metrics4batch(j,"oracle","r(tar):r(content)",sigs_gt["sTarget_late"],sigs_gt["sContent_late"],sigs_gt["sAnecho"], nmref=speechref))
             # # -> r(targetclone) : r(target) 
-            eval_dict_list.append(self.metrics4batch(j,"oracle","r(target):r(targetclone)",sTarget-sAnecho,sTargetClone-sAnecho,sAnecho, nmref=speechref))
+            eval_dict_list.append(self.metrics4batch(j,"oracle","r(tar):r(tarclone)",sigs_gt["sTarget_late"],sigs_gt["sTargetClone_late"],sigs_gt["sAnecho"], nmref=speechref))
 
 
         return eval_dict_list
@@ -128,24 +141,36 @@ class Evaluator(torch.nn.Module):
 
         eval_dict_list=[]
         for j, data in tqdm(enumerate(self.testloader),total = len(self.testloader)):
-            # get datapoint 
-            sContent, sStyle, sTarget, sAnecho, sStyle_anecho = data
+
+            # # get datapoint 
+            # sContent, sStyle, sTarget, sAnecho, sStyle_anecho = data
+            # # get prediction
+            # _, _, _, sPrediction=trainer.infer(model, data, device)
+            # if bool(config_train["is_vae"]):      
+            #     sPrediction, mu, log_var = sPrediction
+            # # get metrics
+            # # -> predicion : target
+            # eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:target", sPrediction, sTarget, sAnecho, nmref=speechref))
+            # # -> predicion : content
+            # eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:content",sPrediction, sContent, sAnecho,nmref=speechref))
+
+
+            # get extended datapoint (one at the time)
+            sigs_gt, _ = self.testset_orig.get_item_test(j,truncate_rirs=True)
+            # move all signals to device
+            sigs_gt = {key: value.to(device) for key, value in sigs_gt.items()}
+
+            data=[sigs_gt["sContent"], sigs_gt["sStyle"], sigs_gt["sTarget"], sigs_gt["sAnecho"], sigs_gt["sAnecho"]]
+
             # get prediction
             _, _, _, sPrediction=trainer.infer(model, data, device)
             if bool(config_train["is_vae"]):      
                 sPrediction, mu, log_var = sPrediction
 
-            # get metrics
             # -> predicion : target
-            # eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:target", sPrediction, sTarget, sAnecho, nmref=speechref))
-            # -> predicion : content
-            # eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:content",sPrediction, sContent, sAnecho,nmref=speechref))
-            # # -> predicion : style
-            # eval_dict_list.append(self.metrics4batch(j,eval_tag,"r(prediction):r(style)",sPrediction,sStyle,sAnecho,nmref=speechref))
-            # # -> reverb(predicion) : reverb(target)
-            eval_dict_list.append(self.metrics4batch(j,eval_tag,"r(prediction):r(target)",sPrediction-sAnecho.to(device),sTarget-sAnecho,sAnecho,nmref=speechref))
-            # # -> reverb(predicion) : reverb(content)
-            eval_dict_list.append(self.metrics4batch(j,eval_tag,"r(prediction):r(content)",sPrediction-sAnecho.to(device),sContent-sAnecho,sAnecho,nmref=speechref))
+            eval_dict_list.append(self.metrics4batch(j,eval_tag,"pred:tar",sPrediction,sigs_gt["sTarget"].to(device),sigs_gt["sAnecho"],nmref=speechref))
+            # -> r(predicion) : r(content)
+            eval_dict_list.append(self.metrics4batch(j,eval_tag,"r(pred):r(tar)",sPrediction-sigs_gt["sTarget_early"],sigs_gt["sTarget_late"],sigs_gt["sAnecho"],nmref=speechref))
 
         return eval_dict_list
     
@@ -161,26 +186,41 @@ class Evaluator(torch.nn.Module):
         
         eval_dict_list=[]
         for j, data in tqdm(enumerate(self.testloader),total = len(self.testloader)):
-            # get datapoint 
-            sContent, sStyle, sTarget, sAnecho, sStyle_anecho = data
+
+            # # get datapoint 
+            # sContent, sStyle, sTarget, sAnecho, sStyle_anecho = data
+            # # get prediction
+            # _, _, _, sPrediction=self.baselines.infer_baseline(data,baseline)
+            # # get metrics
+            # # -> predicion : target
+            # # eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:target",sPrediction,sTarget,sAnecho,nmref=speechref))
+            # # # -> predicion : content
+            # # eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:content",sPrediction,sContent,sAnecho,nmref=speechref))
+            # # # -> predicion : style
+            # # eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:style",sPrediction,sStyle,sAnecho,nmref=speechref))
+            # # # -> r(predicion) : r(target)
+            # eval_dict_list.append(self.metrics4batch(j,baseline,"r(prediction):r(target)",sPrediction-sAnecho.to(device),sTarget-sAnecho,sAnecho,nmref=speechref))
+            # # # -> r(predicion) : r(content)
+            # eval_dict_list.append(self.metrics4batch(j,baseline,"r(prediction):r(content)",sPrediction-sAnecho.to(device),sContent-sAnecho,sAnecho,nmref=speechref))
+
+
+            # get extended datapoint (one at the time)
+            sigs_gt, _ = self.testset_orig.get_item_test(j,truncate_rirs=True)
+            # move all signals to device
+            sigs_gt = {key: value.to(device) for key, value in sigs_gt.items()}
+            data=[sigs_gt["sContent"], sigs_gt["sStyle"], sigs_gt["sTarget"], sigs_gt["sAnecho"], sigs_gt["sAnecho"]]
+
             # get prediction
             _, _, _, sPrediction=self.baselines.infer_baseline(data,baseline)
-            # get metrics
             # -> predicion : target
-            # eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:target",sPrediction,sTarget,sAnecho,nmref=speechref))
-            # # -> predicion : content
-            # eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:content",sPrediction,sContent,sAnecho,nmref=speechref))
-            # # -> predicion : style
-            # eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:style",sPrediction,sStyle,sAnecho,nmref=speechref))
-            # # -> r(predicion) : r(target)
-            eval_dict_list.append(self.metrics4batch(j,baseline,"r(prediction):r(target)",sPrediction-sAnecho.to(device),sTarget-sAnecho,sAnecho,nmref=speechref))
-            # # -> r(predicion) : r(content)
-            eval_dict_list.append(self.metrics4batch(j,baseline,"r(prediction):r(content)",sPrediction-sAnecho.to(device),sContent-sAnecho,sAnecho,nmref=speechref))
+            eval_dict_list.append(self.metrics4batch(j,baseline,"pred:tar",sPrediction,sigs_gt["sTarget"],sigs_gt["sAnecho"],nmref=speechref))
+            # -> r(predicion) : r(content)
+            eval_dict_list.append(self.metrics4batch(j,baseline,"r(pred):r(tar)",sPrediction-sigs_gt["sTarget_early"],sigs_gt["sTarget_late"],sigs_gt["sAnecho"],nmref=speechref))
 
         return eval_dict_list
     
 
-    def metrics4batch(self, idx, label, comp_name, x1, x2, x_anecho, nmref):
+    def metrics4batch(self, idx, label, comp_name, x1, x2, x_anecho, nmref,scale_in=True):
 
         device= self.config["device"]
         # prepare dimensions (B,C,N) -> (B,N)
@@ -193,6 +233,11 @@ class Evaluator(torch.nn.Module):
         x2=hlp.torch_resample_if_needed(x2,48000,16000).to(device)
         x_anecho=hlp.torch_resample_if_needed(x_anecho,48000,16000).to(device)
         nmref=hlp.torch_resample_if_needed(nmref,48000,16000).to(device)
+
+        if scale_in:
+            x1=hlp.torch_normalize_max_abs(x1)
+            x2=hlp.torch_normalize_max_abs(x2)
+            x_anecho=hlp.torch_normalize_max_abs(x_anecho)
 
         # ----- Compute perceptual losses -----
         L_pesq_x1=torch.tensor([float('nan')]).to(device)
@@ -308,7 +353,6 @@ class Evaluator(torch.nn.Module):
     def save_audios_sample_ext(self,checkpointpath,idx,savedir,savefiles=True):
                         
         
-
         filenames={}
         sigs={}
 
@@ -316,10 +360,10 @@ class Evaluator(torch.nn.Module):
 
         if savefiles==True:
             hlp.init_random_seeds(0)
-            sigs_gt, rirs = self.testset_orig.get_item_test(46,truncate_rirs=True)
+            sigs_gt, rirs = self.testset_orig.get_item_test(idx,truncate_rirs=True)
             hlp.init_random_seeds(0)
-            data=self.testset_orig[idx]
-            sContent, sStyle, sTarget, sAnecho, sStyle_anecho = data
+            data=[sigs_gt["sContent"], sigs_gt["sStyle"], sigs_gt["sTarget"], sigs_gt["sAnecho"], sigs_gt["sAnecho"]]
+            
 
         if checkpointpath=="groundtruth":
             
@@ -396,10 +440,12 @@ class Evaluator(torch.nn.Module):
 
         else: 
             model_tag=checkpointpath.split('/')[-2] + "_" + os.path.basename(checkpointpath).split(".")[0]
+            model_tag=model_tag.split("c_wunet_")[1] if "c_wunet_" in model_tag else model_tag
+            model_tag=model_tag.replace("checkpoint","ch")
 
-            filenames[model_tag + "sPred_model"] = pjoin(savedir,"testset_idx" + str(idx) + "--" + model_tag + '_sPred_model.wav')
-            filenames[model_tag + "sPred_model_early"] = pjoin(savedir,"testset_idx" + str(idx) + "--" + model_tag + '_sPred_model_early.wav')
-            filenames[model_tag + "sPred_model_late"] = pjoin(savedir,"testset_idx" + str(idx) + "--" + model_tag + '_sPred_model_late.wav')
+            filenames[model_tag + "_sPred_model"] = pjoin(savedir,"testset_idx" + str(idx) + "--" + model_tag + '_sPred_model.wav')
+            filenames[model_tag + "_sPred_model_early"] = pjoin(savedir,"testset_idx" + str(idx) + "--" + model_tag + '_sPred_model_early.wav')
+            filenames[model_tag + "_sPred_model_late"] = pjoin(savedir,"testset_idx" + str(idx) + "--" + model_tag + '_sPred_model_late.wav')
 
             if savefiles==True:
                 print("getting checkpoint signals")
@@ -411,15 +457,15 @@ class Evaluator(torch.nn.Module):
                 # load weights from checkpoint
                 train_results=torch.load(os.path.join(checkpointpath),map_location=device,weights_only=True)
                 model.load_state_dict(train_results["model_state_dict"])
-                sigs[model_tag + "sPred_model"] =trainer.infer(model, data, device)[3].cpu().squeeze(1)
-                sigs[model_tag + "sPred_model_early"] = sigs[model_tag + "sPred_model"] - sigs_gt["sTarget_late"]
-                sigs[model_tag + "sPred_model_late"] = sigs[model_tag + "sPred_model"] - sigs_gt["sTarget_early"]
+                sigs[model_tag + "_sPred_model"] =trainer.infer(model, data, device)[3].cpu().squeeze(1)
+                sigs[model_tag + "_sPred_model_early"] = sigs[model_tag + "_sPred_model"] - sigs_gt["sTarget_late"]
+                sigs[model_tag + "_sPred_model_late"] = sigs[model_tag + "_sPred_model"] - sigs_gt["sTarget_early"]
 
             else:
                 print("loading checkpoint signals from file")
-                sigs[model_tag + "sPred_model"] = hlp.torch_load_mono(filenames[model_tag + "sPred_model"], fs)
-                sigs[model_tag + "sPred_model_early"] = hlp.torch_load_mono(filenames[model_tag + "sPred_model_early"], fs)
-                sigs[model_tag + "sPred_model_late"] = hlp.torch_load_mono(filenames[model_tag + "sPred_model_late"], fs)
+                sigs[model_tag + "_sPred_model"] = hlp.torch_load_mono(filenames[model_tag + "_sPred_model"], fs)
+                sigs[model_tag + "_sPred_model_early"] = hlp.torch_load_mono(filenames[model_tag + "_sPred_model_early"], fs)
+                sigs[model_tag + "_sPred_model_late"] = hlp.torch_load_mono(filenames[model_tag + "_sPred_model_late"], fs)
 
         if savefiles==True:
             [audiosave(filenames[key], sigs[key], 48000) for key in sigs.keys()]
@@ -594,10 +640,10 @@ if __name__ == "__main__":
 
     # set parameters for this experiment
     config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
-    config["eval_file_name"] = "151024_compare_percept_100testset_revpart.csv"
+    config["eval_file_name"] = "151024_compare_percept_100testset_revpart_scaled2000.csv"
     config["rt60diffmin"] = -3
     config["rt60diffmax"] = 3
-    config["N_datapoints"] = 100 # if 0 - whole test set included 
+    config["N_datapoints"] = 2000 # if 0 - whole test set included 
     config["batch_size_eval"] = 1
     config["eval_split"] = "test"
 

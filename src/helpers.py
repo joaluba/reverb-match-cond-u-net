@@ -479,3 +479,24 @@ def plot_2_spectrograms(audio1, audio2, fs):
     # Show the plot
     plt.tight_layout()
     plt.show()
+
+
+def subtract_by_mask(signal1,signal2, fs):
+    from scipy.signal import stft, istft
+    window = 'hann'
+    nperseg = 512  
+    noverlap = nperseg // 2  
+    f1, t1, S1 = stft(signal1, fs, window=window, nperseg=nperseg, noverlap=noverlap)
+    f2, t2, S2 = stft(signal2, fs, window=window, nperseg=nperseg, noverlap=noverlap)
+    S1_dB= 20 * np.log10(np.abs(S1) + 1e-10)
+    S2_dB= 20 * np.log10(np.abs(S2) + 1e-10)
+    # create binary mask
+    Diff_dB = S1_dB - S2_dB
+    magnitude_diff = np.abs(Diff_dB)
+    threshold = 5
+    # Create a binary mask where 1 represents significant differences
+    binary_mask = (magnitude_diff > threshold).astype(int)
+    S1_clean=S1*binary_mask
+    # Compute inverse STFT to get the result back in the time domain
+    _, signal_clean = istft(S1_clean, 48000, window=window, nperseg=nperseg, noverlap=noverlap)
+    return signal_clean
