@@ -21,6 +21,127 @@ def place_on_circle(head_pos,r,angle_deg):
     src_pos=np.array([x_coord, y_coord, head_pos[2]]) 
     return src_pos
 
+def plot_scene(room_dims,head_pos,l_src_pos,perspective="xy"):
+#   function to plot the designed scene
+#   room_dims - dimensions of the room [x,y,z]
+#   head_pos - head position [x,y,z]
+#   l_src_pos - list of source positions [[x,y,z],...,[x,y,z]]
+#   perspective - which two dimensions to show 
+    if perspective=="xy":
+        dim1=1; dim1name="y"
+        dim2=0; dim2name="x"
+    elif perspective=="yz":
+        dim1=1; dim1name="y"
+        dim2=2; dim2name="z"
+    elif perspective=="xz":
+        dim1=0; dim1name="x"
+        dim2=2; dim2name="z"
+    fig = plt.figure()
+    ax = fig.add_subplot()
+    plt.xlim((0,room_dims[dim1]))
+    plt.ylim((0,room_dims[dim2]))
+    plt.axvline(head_pos[dim1], color='y') # horizontal lines
+    plt.axhline(head_pos[dim2], color='y') # vertical lines
+    plt.grid(True)
+    plt.xlabel(dim1name)
+    plt.ylabel(dim2name)
+    # plot sources and receivers
+    plt.plot(head_pos[dim1],head_pos[dim2], "o", ms=10, mew=2, color="black")
+    dim1=1; dim1name="y"
+    dim2=2; dim2name="z"
+    ax = fig.add_subplot()
+    for i,src_pos in enumerate(l_src_pos):
+        plt.plot(src_pos[dim1],src_pos[dim2], "o", ms=10, mew=2, color="red")
+        plt.annotate(str(i), (src_pos[dim1],src_pos[dim2]))
+    ax.set_aspect('equal', adjustable='box')
+
+def generate_room_from_volume(volume_min, volume_max,z_min=2, z_max=5):
+    # Step 1: Sample the room volume
+    volume = np.random.uniform(low=volume_min, high=volume_max)
+    # Step 2: Set the height (depends on the volume)
+    room_z = max(map_range(volume, a=8, b=3375, c=z_min, d=z_max) + np.random.normal(1,1),2)
+    # Step 3: Compute x for a square when z is chosen
+    cube_x = np.sqrt(volume / room_z)  # Assuming square for x and y initially
+    A=cube_x**2
+    x_min = cube_x
+    x_max = np.sqrt(A/2)  # Ensures y <= 2x
+    # Sample x within the valid range
+    room_x = np.random.uniform(x_min, x_max)
+    room_y=A/room_x
+    # print(f"Generated room dimensions: volume={volume}, room_x={room_x} m, room_y={room_y} m, room_z={room_z} m")
+    return round(volume, 2), round(room_x, 2), round(room_y, 2), round(room_z, 2)
+
+def map_range(x, a=12, b=3375, c=2, d=5):
+    # map range [a,b] to range [c,d]
+    return ((x - a) / (b - a)) * (d - c) + c
+
+def find_volume_range(RT60, typical_abs_min, typical_abs_max):
+    # Compute a range of volumes that would be reasonable for a given 
+    # RT60 time (given realistic absorption coefficients)
+
+    # Assuming a cube: 
+    # V=x^3
+    # A=6x^2
+    # rt60 =(0.161*x^3)/(6*x^2*alpha)
+    # --> x= (rt60*6*alpha)/0.161
+    # V = x^3
+
+    # calculate min and max x
+    x_min = (RT60 * 6 * typical_abs_min) / 0.161  
+    x_min = max(x_min,2) # minimum cube wall length is 2m
+    x_max = (RT60 * 6 * typical_abs_max) / 0.161 
+    x_max = max(x_max,2)
+    x_max = min(x_max,15) # maximum wall length is 15m 
+
+    # compute volume based on x
+    V_min = x_min ** 3  
+    V_max = x_max ** 3  
+
+    return round(V_min, 2), round(V_max, 2)
+
+
+
+def generate_rt60_diff(rt60min, rt60max, rt60diffmean, rt60diffstd):
+
+    # Sample rt60diff from a Gaussian
+    rt60diff = np.random.normal(rt60diffmean, rt60diffstd)
+    # Ensure rt60diff is within a reasonable range 
+    rt60diff = np.clip(rt60diff, 0, rt60max - rt60min)
+    
+    while True:
+        # Sample RT60 for the first room
+        rt601 = np.random.uniform(rt60min, rt60max)
+        
+        # Randomly decide to add or subtract the difference
+        if np.random.rand() > 0.5:
+            rt602 = rt601 + rt60diff
+        else:
+            rt602 = rt601 - rt60diff
+
+        # Check if rt602 is within valid bounds
+        if rt60min <= rt602 <= rt60max:
+            return round(rt601, 3), round(rt602, 3)
+
+
+
+def place_inside_room(Dx, Dy, margin_x=0.35, margin_y=0.35, z_range=(1.0, 2.0), avoid_position=None):
+    # avoid_position - [x,y,z] coordinates of the point to avoid
+    min_distance = 0.3  # Minimum distance from avoid_position
+
+    while True:
+        rec_x = np.random.uniform(low=margin_x * Dx, high=(1 - margin_x) * Dx)
+        rec_y = np.random.uniform(low=margin_y * Dy, high=(1 - margin_y) * Dy)
+        rec_z = np.random.uniform(low=z_range[0], high=z_range[1])
+
+        if avoid_position is None:
+            return rec_x, rec_y, rec_z
+        
+        # Compute Euclidean distance to avoid_position
+        distance = np.linalg.norm(np.array([rec_x, rec_y, rec_z]) - np.array(avoid_position))
+        if distance >= min_distance:
+            return rec_x, rec_y, rec_z
+
+
 def compute_ir_stats(filename,bands):    
     # Compute stats based on the RIR: 
     rt30=t60_impulse(filename, bands, rt='t30')
