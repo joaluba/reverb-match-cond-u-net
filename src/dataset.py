@@ -55,16 +55,34 @@ class DatasetReverbTransfer(Dataset):
         # can have a different ir. This reflects if we want to learn one-to-one, many-to-one, one-to-many, or many-to-many. 
 
         if self.content_ir is None:
-            r1 = hlp.torch_load_mono(df_pair["ir_file_path"][0],self.fs)
+            # load either rir or its clone (same room, different position)
+            load_clone = np.random.choice([True, False])
+            if load_clone:
+                r1 = hlp.torch_load_mono(df_pair["ir_clone_file_path"][0],self.fs)
+            else:
+                r1 = hlp.torch_load_mono(df_pair["ir_file_path"][0],self.fs)
+            
+            
         elif self.content_ir=="anechoic":
             r1 = torch.cat((torch.tensor([[1.0]]), torch.zeros((1,self.fs-1))),1)
         else: 
             r1 = hlp.torch_load_mono(self.content_ir,self.fs)
             
         if self.style_ir is None:
-            r2 = hlp.torch_load_mono(df_pair["ir_file_path"][1],self.fs)
+            # load either rir or its clone (same room, different position)
+            load_clone = np.random.choice([True, False])
+            if load_clone:
+                r2 = hlp.torch_load_mono(df_pair["ir_clone_file_path"][1],self.fs)
+            else:
+                r2 = hlp.torch_load_mono(df_pair["ir_file_path"][1],self.fs)
+            
         else: 
             r2 = hlp.torch_load_mono(self.style_ir,self.fs)
+
+
+        # truncate silence in rirs:
+        r1=hlp.truncate_ir_silence(r1, self.fs, threshold_db=20)
+        r2=hlp.truncate_ir_silence(r2, self.fs, threshold_db=20)
 
         # Scale rirs so that the peak is at 1
         r1=hlp.torch_normalize_max_abs(r1) 
@@ -90,7 +108,7 @@ class DatasetReverbTransfer(Dataset):
         s1r1n1=hlp.torch_mix_and_set_snr(s1r1,n1,snr1)
         s2r2n2=hlp.torch_mix_and_set_snr(s2r2,n2,snr2)
 
-        # scale data 
+        # normalize inputs
         s1r1n1=hlp.torch_normalize_max_abs(s1r1n1) # Reverberant content sound
         s2r2n2=hlp.torch_normalize_max_abs(s2r2n2) # Style sound
         s1r2=hlp.torch_normalize_max_abs(s1r2) # Target
