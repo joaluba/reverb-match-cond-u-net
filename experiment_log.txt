@@ -148,3 +148,12 @@
 [2024-06-10-13:14:02] pilot
 [2024-06-10-13:19:26] pilot
 [2024-06-10-15:02:23] now full experiment 
+[2025-02-14-17:11:10] pilot for the new dataset with varying src-rec dist and controlled rt60diff
+[2025-02-14-17:12:47] same
+[2025-02-14-17:13:30] same - fixed path in the basic.config
+[2025-02-14-17:14:08] same
+[2025-02-14-17:22:52] running pilot, 5 epochs each in tmux
+[2025-02-17-11:28:22] full experiment with new data set
+[2025-02-17-11:46:54] starting again, but only have time for 100 epochs 
+[2025-03-11-11:05:39] 300 epochs, stft+wave and logmel+wave
+[2025-03-16-11:23:51] long training(300 epochs) with wave losses

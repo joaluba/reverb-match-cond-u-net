@@ -18,8 +18,8 @@ symmetric_film: 1
 # dataset parameters
 style_rir: null # null means it will be randomly selected
 content_rir: null # null means it will be randomly selected
-df_metadata: /home/ubuntu/joanna/reverb-match-cond-u-net/dataset-metadata/17-05-2024--15-42_data_set.csv
-# df_metadata: /home/ubuntu/joanna/reverb-match-cond-u-net/dataset-metadata/nonoise_48khz_guestxr_pilot.csv
+df_metadata: /home/ubuntu/joanna/reverb-match-cond-u-net/dataset-metadata/14-02-2025--12-20_data_set_t60diff.csv
+# df_metadata: /home/ubuntu/joanna/reverb-match-cond-u-net/dataset-metadata/14-02-2025--12-20_data_set_t60diff_pilot.csv
 p_noise: 0
 
 # training arguments
