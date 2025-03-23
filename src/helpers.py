@@ -290,12 +290,35 @@ def unsqueezeif2D(x):
     return x
 
 
-def plotspectrogram(y, sr, n_fft,hop_length,title):
-    # Compute STFT spectrogram
-    spectrogram = np.abs(librosa.stft(y, n_fft=n_fft, hop_length=hop_length))
-    # Plot the spectrogram
-    librosa.display.specshow(librosa.amplitude_to_db(spectrogram**2, ref=np.max), sr=sr, hop_length=hop_length, x_axis='time', y_axis='log', vmin=-80, vmax=0)
+def plotspectrogram(audio,fs,frame,overlap,mycmap,title):
+    plt.rcParams.update({'font.size': 10})
+
+    # Compute STFT for both audio signals
+    f1, t1, Zxx1 = signal.stft(audio, fs=fs, nperseg=frame, noverlap=overlap)
+
+    # Limit the frequency to 10 kHz
+    freq_limit = 10000
+    freq_idx_limit1 = np.where(f1 <= freq_limit)[0]
+    f1_limited = f1[freq_idx_limit1]
+    Zxx1_limited = Zxx1[:,freq_idx_limit1, :]
+
+    # Convert magnitude to dB
+    Zxx1_dB = 20 * np.log10(np.abs(Zxx1_limited) + 1e-10)
+
+    # Create subplots for the two spectrograms and the SNR mask
+    fig, (ax1) = plt.subplots(1, 1, figsize=(3, 3))
+
+    # Plot spectrogram for audio1
+    pcm1 = ax1.pcolormesh(t1, f1_limited, Zxx1_dB[0], shading='gouraud', cmap=mycmap, vmin=-120, vmax=0)
+    ax1.set_title('Spectrogram 1 (dB, limited to 10 kHz)')
+    ax1.set_xlabel('Time [s]')
+    ax1.set_ylabel('Frequency [Hz]')
+    # fig.colorbar(pcm1, ax=ax1, format="%+2.0f dB")
+
+    # Show the plot
+    plt.tight_layout()
     plt.title(title)
+    plt.show()
 
 def shiftby(sig, lag):
     sig=sig.T

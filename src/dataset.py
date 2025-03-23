@@ -56,7 +56,11 @@ class DatasetReverbTransfer(Dataset):
 
         if self.content_ir is None:
             # load either rir or its clone (same room, different position)
-            load_clone = np.random.choice([True, False])
+            if self.split=="train":
+                load_clone = False # np.random.choice([True, False])
+            else:
+                load_clone=False
+
             if load_clone:
                 r1 = hlp.torch_load_mono(df_pair["ir_clone_file_path"][0],self.fs)
             else:
@@ -70,7 +74,11 @@ class DatasetReverbTransfer(Dataset):
             
         if self.style_ir is None:
             # load either rir or its clone (same room, different position)
-            load_clone = np.random.choice([True, False])
+            if self.split=="train":
+                load_clone = False #np.random.choice([True, False])
+            else:
+                load_clone=False
+
             if load_clone:
                 r2 = hlp.torch_load_mono(df_pair["ir_clone_file_path"][1],self.fs)
             else:
@@ -78,11 +86,6 @@ class DatasetReverbTransfer(Dataset):
             
         else: 
             r2 = hlp.torch_load_mono(self.style_ir,self.fs)
-
-
-        # truncate silence in rirs:
-        r1=hlp.truncate_ir_silence(r1, self.fs, threshold_db=20)
-        r2=hlp.truncate_ir_silence(r2, self.fs, threshold_db=20)
 
         # Scale rirs so that the peak is at 1
         r1=hlp.torch_normalize_max_abs(r1) 
@@ -173,8 +176,8 @@ class DatasetReverbTransfer(Dataset):
         s2=hlp.get_nonsilent_frame(s2,self.sig_len)
 
         # Apply phase shift or none
-        s1*=torch.tensor(df_pair["aug_phase"][0])
-        s2*=torch.tensor(df_pair["aug_phase"][1])
+        s1*=np.random.choice([-1, 1])
+        s2*=np.random.choice([-1, 1])
         
         # Load impulse responses
         # Note: If self.content_ir is not empty, it means that we want all content audios to have the same target ir,

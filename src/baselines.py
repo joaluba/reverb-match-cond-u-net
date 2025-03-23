@@ -78,7 +78,8 @@ class Baselines(torch.nn.Module):
             reverberated_source = audio_fins.audio_normalize_batch(sStyle_in, "rms", self.fins_config.model.params.rms_level) # (batch_size, num_channels, signal_length)
             predicted_rir = self.fins_model(reverberated_source, batch_stochastic_noise, batch_noise_condition) # (batch_size, num_channels, ir_length)
             predicted_rir=torch.stack([hlp.truncate_ir_silence(predicted_rir[i,:,:], 48000, threshold_db=20) for i in range(batch_size)])
-    
+            predicted_rir=torch.stack([hlp.torch_normalize_max_abs(predicted_rir[i,:,:]) for i in range(batch_size)])
+
             # ----- step 3: convolve derev.signal with the predicted rir in each batch  ---- 
             sTarget_prediction = torch.stack([fftconvolve(sContent_derev[i].unsqueeze(0), predicted_rir[i].unsqueeze(0), mode="full").squeeze(0) for i in range(batch_size)])
 
