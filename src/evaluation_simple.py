@@ -134,9 +134,9 @@ class Evaluator(torch.nn.Module):
                 sPrediction, mu, log_var = sPrediction
             # get metrics
             # -> predicion : target
-            eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:target", sPrediction, sTarget, sAnecho, nmref=speechref))
+            eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:target", sTarget, sPrediction, sAnecho, nmref=speechref))
             # -> predicion : content
-            eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:content",sPrediction, sContent, sAnecho,nmref=speechref))
+            eval_dict_list.append(self.metrics4batch(j,eval_tag,"prediction:content",sContent, sPrediction, sAnecho,nmref=speechref))
 
         return eval_dict_list
     
@@ -159,9 +159,9 @@ class Evaluator(torch.nn.Module):
             _, _, _, sPrediction=self.baselines.infer_baseline(data,baseline)
             # get metrics
             # -> predicion : target
-            eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:target",sPrediction,sTarget,sAnecho,nmref=speechref))
+            eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:target",sTarget,sPrediction,sAnecho,nmref=speechref))
             # # -> predicion : content
-            eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:content",sPrediction,sContent,sAnecho,nmref=speechref))
+            eval_dict_list.append(self.metrics4batch(j,baseline,"prediction:content",sContent,sPrediction, sAnecho,nmref=speechref))
 
         return eval_dict_list
     
@@ -186,9 +186,9 @@ class Evaluator(torch.nn.Module):
             x_anecho=hlp.torch_normalize_max_abs(x_anecho)
 
         # set all to the same energy
-        x1=set_signal_energy(x1, target_db=62)
-        x2=set_signal_energy(x2, target_db=62)
-        x_anecho=set_signal_energy(x_anecho, target_db=62)
+        rms_x1=torch.sqrt(torch.mean(x1**2)) # x1 is typically the target
+        x2=set_rms(x2,rms_x1)
+        x_anecho=set_rms(x_anecho,rms_x1)
 
         # ----- Compute perceptual losses -----
         L_pesq_x1=torch.tensor([float('nan')]).to(device)
@@ -310,7 +310,7 @@ def eval_experiment(config,checkpoints_list=None):
 
     eval_dict_list=[]
     eval_dir=config["eval_dir"]
-    eval_file_name=config["eval_file_name"]
+    
 
     # ---- initialize evaluator ----
     # (metrics, baselines, dataset, dataloader)
@@ -319,12 +319,14 @@ def eval_experiment(config,checkpoints_list=None):
     # ---- evaluate oracle data  -----
 
     if config["compute_only"]=="oracle":
+        eval_file_name="oracle_"+config["eval_file_name"]
         print(f"Computing metrics -> oracle ")
         eval_dict_list.extend(myeval.compute_metrics_oracle())
         # list -> df and save 
         pd.DataFrame(eval_dict_list).to_csv(eval_dir+eval_file_name, index=False)
 
     elif config["compute_only"]=="baselines":
+        eval_file_name="baselines_"+config["eval_file_name"]
         # --- evaluate baselines ----
         print(f"Computing metrics -> baselines ")
         eval_dict_list.extend(myeval.compute_metrics_baselines("anecho+fins"))
@@ -334,6 +336,7 @@ def eval_experiment(config,checkpoints_list=None):
         pd.DataFrame(eval_dict_list).to_csv(eval_dir+eval_file_name, index=False)
 
     elif config["compute_only"]=="models":
+        eval_file_name="models_"+config["eval_file_name"]
         # ---- evaluate my trained models ----
         print(f"Computing metrics -> models ")
         # a loop over all conditions of the considered experiment 
@@ -367,15 +370,12 @@ def eval_experiment(config,checkpoints_list=None):
                 pd.DataFrame(eval_dict_list).to_csv(eval_dir+eval_file_name, index=False)
 
 
+def set_rms(signal,rms_target):
+    """ Normalize signal to a specific RMS level in dB FS """
+    rms_current = torch.sqrt(torch.mean(signal**2))  # Compute current RMS
 
-def set_signal_energy(signal, target_db=62):
-    """ Scale signal so its energy corresponds to target_db dB """
-    E_target = 10 ** (target_db / 10)  # Convert dB to linear energy
-    E_current = np.sum(signal**2)  # Compute current energy
-
-    if E_current > 0:
-        scale = np.sqrt(E_target / E_current)  # Compute scaling factor
-        signal = signal * scale  # Scale signal
+    if rms_current > 0:
+        signal = signal * (rms_target / rms_current)  # Scale signal
 
     return signal
 
@@ -401,7 +401,7 @@ if __name__ == "__main__":
 
     # set parameters for this experiment
     config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
-    config["eval_file_name"] = "210325_evaluation_short.csv"
+    config["eval_file_name"] = "230525_evaluation.csv"
     config["rt60diffmin"] = -3
     config["rt60diffmax"] = 3
     config["N_datapoints"] = 0 # if 0 - whole test set included 
