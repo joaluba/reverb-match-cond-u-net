@@ -102,7 +102,6 @@ def find_volume_range(RT60, typical_abs_min, typical_abs_max):
 
 
 def generate_rt60_diff(rt60min, rt60max, rt60diffmean, rt60diffstd):
-
     # Sample rt60diff from a Gaussian
     rt60diff = np.random.normal(rt60diffmean, rt60diffstd)
     # Ensure rt60diff is within a reasonable range 
@@ -466,7 +465,7 @@ def torch_deconv_W(reverberant_signal, room_impulse_response):
     # Perform FFT on both signals
     Y = torch.fft.fft(reverberant_signal_padded)
     H = torch.fft.fft(room_impulse_response_padded)
-    # Compute wiener filter
+    # Compute wiener filters
     wiener_filter = torch.conj(H) / (torch.abs(H)**2 + 1e-10)
    # Apply Wiener filter
     X = Y * wiener_filter
@@ -528,8 +527,6 @@ def truncate_ir_silence(ir, sample_rate, threshold_db=20):
     # Truncate the initial silence
     truncated_ir = ir[last_sample_index:]
     return truncated_ir.unsqueeze(0)
-
-
 
 
 def plot_2_waveforms(audio1, audio2, fs):
