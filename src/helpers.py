@@ -305,14 +305,11 @@ def plotspectrogram(audio,fs,frame,overlap,mycmap,title):
     # Convert magnitude to dB
     Zxx1_dB = 20 * np.log10(np.abs(Zxx1_limited) + 1e-10)
 
-    # Create subplots for the two spectrograms and the SNR mask
-    fig, (ax1) = plt.subplots(1, 1, figsize=(3, 3))
-
-    # Plot spectrogram for audio1
-    pcm1 = ax1.pcolormesh(t1, f1_limited, Zxx1_dB[0], shading='gouraud', cmap=mycmap, vmin=-120, vmax=0)
-    ax1.set_title('Spectrogram 1 (dB, limited to 10 kHz)')
-    ax1.set_xlabel('Time [s]')
-    ax1.set_ylabel('Frequency [Hz]')
+    # Plot spectrogram for audio
+    plt.pcolormesh(t1, f1_limited, Zxx1_dB[0], shading='gouraud', cmap=mycmap, vmin=-120, vmax=0)
+    plt.title('Spectrogram 1 (dB, limited to 10 kHz)')
+    plt.xlabel('Time [s]')
+    plt.ylabel('Frequency [Hz]')
     # fig.colorbar(pcm1, ax=ax1, format="%+2.0f dB")
 
     # Show the plot

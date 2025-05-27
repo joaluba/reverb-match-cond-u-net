@@ -99,8 +99,16 @@ class Evaluator(torch.nn.Module):
             eval_dict_list.append(self.metrics4batch(j,"oracle","target:content",sTarget,sContent,sAnecho,nmref=speechref))
             # -> content : anechoic
             eval_dict_list.append(self.metrics4batch(j,"oracle","target:anecho",sTarget,sAnecho,sAnecho, nmref=speechref))
-            # -> content : style
+            # -> target : style
             eval_dict_list.append(self.metrics4batch(j,"oracle","target:style",sTarget,sStyle,sAnecho, nmref=speechref))
+            # -> content : style
+            eval_dict_list.append(self.metrics4batch(j,"oracle","content:style",sContent,sStyle,sAnecho, nmref=speechref))
+            # -> targetclone : target
+            if j<5000:
+                sTargetClone=self.testset_orig.get_target_clone(j,sAnecho)
+                eval_dict_list.append(self.metrics4batch(j,"oracle","target:targetclone",sTarget,sTargetClone,sAnecho, nmref=speechref))
+            
+
 
 
         return eval_dict_list
@@ -277,7 +285,7 @@ class Evaluator(torch.nn.Module):
         '1L_multi-mel': self.measures["multi-mel"](x1,x2).item(),
         '1S_sisdr': self.measures["sisdr"](x1,x2).item(),
         '1L_emb_euc': self.measures["emb_euc"](x1,x2).item(),
-        # 'D_emb_cos': self.measures["emb_cos"](x1,x2).item(), 
+        '1L_emb_cos': self.measures["emb_cos"](x1,x2).item(), 
         
         # Type 2: similarity measured using non-symmetric metric 
         # M = (m(a,b)+m(b,a))/2
@@ -305,7 +313,6 @@ class Evaluator(torch.nn.Module):
         return dict_row
     
 
-
 def eval_experiment(config,checkpoints_list=None):
 
     eval_dict_list=[]
@@ -324,6 +331,7 @@ def eval_experiment(config,checkpoints_list=None):
         eval_dict_list.extend(myeval.compute_metrics_oracle())
         # list -> df and save 
         pd.DataFrame(eval_dict_list).to_csv(eval_dir+eval_file_name, index=False)
+
 
     elif config["compute_only"]=="baselines":
         eval_file_name="baselines_"+config["eval_file_name"]
@@ -401,7 +409,7 @@ if __name__ == "__main__":
 
     # set parameters for this experiment
     config["eval_dir"] = "/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/"
-    config["eval_file_name"] = "230525_evaluation.csv"
+    config["eval_file_name"] = "150425_evaluation.csv"
     config["rt60diffmin"] = -3
     config["rt60diffmax"] = 3
     config["N_datapoints"] = 0 # if 0 - whole test set included 
