@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import soundfile as sf
 import random
-sys.path.insert(0,'/home/ubuntu/joanna/reverb-match-cond-u-net/urgent2024_challenge/evaluation_metrics')
+sys.path.insert(0,'/home/ubuntu/guestxr2/home/ubuntu/joanna/reverb-match-cond-u-net/urgent2024_challenge/evaluation_metrics')
 from calculate_intrusive_se_metrics import lsd_metric, mcd_metric
 # my modules
 import dataset
@@ -37,7 +37,7 @@ class Evaluator(torch.nn.Module):
     def load_metrics(self):
         device=self.config["device"]
 
-        my_best_checkpoint_path="/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/10-06-2024--15-02_c_wunet_stft+wave_0.8_0.2/checkpointbest.pt"
+        my_best_checkpoint_path="/home/ubuntu/guestxr2/home/ubuntu/Data/RESULTS-reverb-match-cond-u-net/runs-exp-20-05-2024/10-06-2024--15-02_c_wunet_stft+wave_0.8_0.2/checkpointbest.pt"
 
         self.measures= {
             "multi-stft" : loss_stft.MultiResolutionSTFTLoss().to(device), 
@@ -175,6 +175,17 @@ class Evaluator(torch.nn.Module):
     
 
     def metrics4batch(self, idx, label, comp_name, x1, x2, x_anecho, nmref,scale_in=True):
+        # This function computes all metrics for a given batch of data 
+        # and it returns one row of a dictionary with all metrics and a assigned index and label. 
+        # idx is the assigned index of the batch, 
+        # label is a tag for the evaluation (e.g. "baseline1" or "checkpoint100")
+        # comp_name is a string that describes the type of comparison (e.g. "target:content")
+        # x1 and x2 are two tensors shape (B,C,N) that are being compared 
+        # (in this work all metrics are symmetric, so it does not matter which is x1 and which is x2)
+        # x_anecho is tensors of shape (B,C,N) which is used as a reference for intrusive metrics
+        # nmref is a tensor of shape (B,C,N) which is used as a reference for non-intrusive metrics
+        # scale_in is a boolean that indicates whether to scale the input signals to [-1,1] range
+        # ----------------------------------------------------------------------------------
 
         device= self.config["device"]
         # prepare dimensions (B,C,N) -> (B,N)

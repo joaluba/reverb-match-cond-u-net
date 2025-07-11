@@ -256,13 +256,22 @@ def conv_based_crop_torch(audio_orig,fs,L_win_smpl,stride_smpl,device):
         audio_crop=audio_orig[:,:,idx_start:idx_end]
     return audio_crop
 
-def torch_set_level(sig_in,L_des):
+def torch_set_rms_level(sig_in,L_des):
     # set FS level of the signal
     sig_zeromean=torch.subtract(sig_in,torch.mean(sig_in,dim=1))
     sig_norm_en=sig_zeromean/torch.max(torch.std(sig_zeromean.reshape(-1)),torch.tensor(1e-10))
     sig_out =sig_norm_en*np.power(10,L_des/20)
     #print(20*np.log10(np.sqrt(np.mean(np.power(sig_out,2)))))
     return sig_out
+
+def np_set_rms_level(signal, target_db=-20):
+    """ Normalize signal to a specific RMS level in dB FS """
+    rms_current = np.sqrt(np.mean(signal**2))  # Compute current RMS
+    rms_target = 10 ** (target_db / 20)  # Convert dB to linear RMS value
+
+    if rms_current > 0:
+        signal = signal * (rms_target / rms_current)  # Scale signal
+    return signal
 
 def torch_mix_and_set_snr(s,n,snr):
     if snr<100:

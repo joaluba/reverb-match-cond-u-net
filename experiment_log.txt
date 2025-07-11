@@ -157,3 +157,6 @@
 [2025-02-17-11:46:54] starting again, but only have time for 100 epochs 
 [2025-03-11-11:05:39] 300 epochs, stft+wave and logmel+wave
 [2025-03-16-11:23:51] long training(300 epochs) with wave losses
+[2025-05-28-12:36:43] ndjkank
+[2025-05-28-13:24:56] My first run of the experiment 
+[2025-05-28-13:25:51] My first run of the experiment 

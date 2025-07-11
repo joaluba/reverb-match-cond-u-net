@@ -6,7 +6,7 @@ from nara_wpe.utils import stft, istft, get_stft_center_frequencies
 from df import enhance, init_df
 
 # Blind RIR estimation baseling
-sys.path.append("/home/ubuntu/joanna/reverb-match-cond-u-net/baseline/fins")
+sys.path.append("/home/ubuntu/guestxr2/home/ubuntu/joanna/reverb-match-cond-u-net/baseline/fins")
 import model_fins
 import audio_fins
 importlib.reload(model_fins)
@@ -24,8 +24,8 @@ class Baselines(torch.nn.Module):
         super().__init__()
         self.config=config
         # load fins config
-        fins_project_path="/home/ubuntu/joanna/fins/fins"
-        fins_checkpoints_path="/home/ubuntu/Data/RESULTS-VAE-IR/fins/checkpoints/m-240416-111748"
+        fins_project_path="/home/ubuntu/guestxr2/home/ubuntu/joanna/fins/fins"
+        fins_checkpoints_path="/home/ubuntu/guestxr2/home/ubuntu/Data/RESULTS-VAE-IR/fins/checkpoints/m-240416-111748"
         # load fins config
         fins_config_path = pjoin(fins_project_path,"config.yaml")
         self.fins_config = hlp.load_config_fins(fins_config_path)
